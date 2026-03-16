@@ -19,7 +19,7 @@ func TestRotateAllPages(t *testing.T) {
 		t.Fatalf("create result dir: %v", err)
 	}
 
-	if err := asposepdf.Rotate(testPDF, outputPath, 90); err != nil {
+	if err := asposepdf.Rotate(testPDF, outputPath, asposepdf.Rotate90); err != nil {
 		t.Fatalf("Rotate: %v", err)
 	}
 
@@ -49,7 +49,7 @@ func TestRotateSpecificPage(t *testing.T) {
 	}
 
 	// Rotate only page 1.
-	if err := asposepdf.Rotate(testPDF, outputPath, 180, 1); err != nil {
+	if err := asposepdf.Rotate(testPDF, outputPath, asposepdf.Rotate180, 1); err != nil {
 		t.Fatalf("Rotate: %v", err)
 	}
 
@@ -67,13 +67,13 @@ func TestRotateAccumulates(t *testing.T) {
 
 	// First rotation: 4pages.pdf → rotated 90°.
 	step1 := filepath.Join(t.TempDir(), "step1.pdf")
-	if err := asposepdf.Rotate(testPDF, step1, 90); err != nil {
+	if err := asposepdf.Rotate(testPDF, step1, asposepdf.Rotate90); err != nil {
 		t.Fatalf("Rotate step 1: %v", err)
 	}
 
 	// Second rotation: step1 (90°) → rotated another 90° = 180° total.
 	outputPath := filepath.Join(resultDir, "rotate_accumulates.pdf")
-	if err := asposepdf.Rotate(step1, outputPath, 90); err != nil {
+	if err := asposepdf.Rotate(step1, outputPath, asposepdf.Rotate90); err != nil {
 		t.Fatalf("Rotate step 2: %v", err)
 	}
 
