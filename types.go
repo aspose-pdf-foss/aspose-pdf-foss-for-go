@@ -1,0 +1,44 @@
+package asposepdf
+
+// pdfValue is any PDF value: dict, array, string, name, int, float, bool, null, ref, stream.
+type pdfValue = any
+
+// pdfNull represents PDF null.
+type pdfNull struct{}
+
+// pdfRef is an indirect reference "n g R".
+type pdfRef struct {
+	Num int
+	Gen int
+}
+
+// pdfName is a PDF name object like /Name.
+type pdfName string
+
+// pdfDict is a PDF dictionary.
+type pdfDict map[string]pdfValue
+
+// pdfArray is a PDF array.
+type pdfArray []pdfValue
+
+// pdfStream is a PDF stream object.
+type pdfStream struct {
+	Dict pdfDict
+	Data []byte // decompressed
+}
+
+// pdfObject is an indirect object "n g obj ... endobj".
+type pdfObject struct {
+	Num   int
+	Gen   int
+	Value pdfValue // dict, stream, array, etc.
+}
+
+// xrefEntry describes where to find a PDF object.
+type xrefEntry struct {
+	Offset       int64 // byte offset in file (type 1)
+	Compressed   bool  // type 2: stored inside an object stream
+	StreamObjNum int   // parent stream object number (type 2)
+	StreamIndex  int   // index inside the stream (type 2)
+	Free         bool  // type 0: free object
+}

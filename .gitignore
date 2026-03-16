@@ -1,0 +1,30 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test cache and coverage
+*.test
+*.out
+coverage.html
+
+# Go workspace
+go.work
+go.work.sum
+
+# Output directories
+pages/
+output/
+all_pages/
+some_pages/
+
+# Test PDFs (keep source PDFs, ignore generated ones)
+*_page*.pdf
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
