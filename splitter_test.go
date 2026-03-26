@@ -114,6 +114,76 @@ func TestExtract(t *testing.T) {
 	}
 }
 
+func TestExtractFiles(t *testing.T) {
+	entries, err := os.ReadDir("testdata/split")
+	if err != nil {
+		t.Fatalf("read testdata/split: %v", err)
+	}
+
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		t.Run(name, func(t *testing.T) {
+			inputPath := filepath.Join("testdata/split", name)
+			stem := name[:len(name)-len(filepath.Ext(name))]
+			outDir := filepath.Join("result_files", "TestExtractFiles", stem)
+
+			total, err := asposepdf.PageCount(inputPath)
+			if err != nil {
+				t.Fatalf("PageCount: %v", err)
+			}
+			if total < 2 {
+				t.Skipf("need at least 2 pages, got %d", total)
+			}
+
+			mid := total / 2 // floor → first half is smaller for odd counts
+
+			if err := os.MkdirAll(outDir, 0o755); err != nil {
+				t.Fatalf("MkdirAll: %v", err)
+			}
+
+			cases := []struct {
+				name      string
+				from, to  int
+				wantPages int
+			}{
+				{"first_half.pdf", 1, mid, mid},
+				{"second_half.pdf", mid + 1, total, total - mid},
+			}
+
+			for _, c := range cases {
+				outPath := filepath.Join(outDir, c.name)
+				if err := asposepdf.Extract(inputPath, outPath,
+					asposepdf.PageRange{From: c.from, To: c.to},
+				); err != nil {
+					t.Fatalf("Extract %s: %v", c.name, err)
+				}
+
+				got, err := asposepdf.PageCount(outPath)
+				if err != nil {
+					t.Fatalf("PageCount %s: %v", c.name, err)
+				}
+				if got != c.wantPages {
+					t.Errorf("%s: expected %d pages, got %d", c.name, c.wantPages, got)
+				}
+
+				report, err := asposepdf.Validate(outPath)
+				if err != nil {
+					t.Fatalf("Validate %s: %v", c.name, err)
+				}
+				if !report.Valid {
+					for _, issue := range report.Issues {
+						t.Errorf("%s: %s: %s", c.name, issue.Code, issue.Message)
+					}
+				}
+			}
+			t.Logf("%s (%d pages) → first_half=%d second_half=%d", stem, total, mid, total-mid)
+		})
+	}
+}
+
 func TestSplitFunc(t *testing.T) {
 	pdf := buildMinimalPDF()
 	tmpDir := t.TempDir()
