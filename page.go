@@ -142,13 +142,3 @@ func mediaBoxFromArray(arr pdfArray) (PageSize, error) {
 	}, nil
 }
 
-// toFloat converts a pdfValue numeric (int or float64) to float64.
-func toFloat(v pdfValue) (float64, error) {
-	switch n := v.(type) {
-	case int:
-		return float64(n), nil
-	case float64:
-		return n, nil
-	}
-	return 0, fmt.Errorf("expected number, got %T", v)
-}

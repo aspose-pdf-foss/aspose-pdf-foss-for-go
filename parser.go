@@ -505,6 +505,17 @@ func parseIndirectObject(data []byte, offset int64) (*pdfObject, error) {
 	return &pdfObject{Num: num, Gen: gen, Value: val}, nil
 }
 
+// toFloat converts a pdfValue numeric (int or float64) to float64.
+func toFloat(v pdfValue) (float64, error) {
+	switch n := v.(type) {
+	case int:
+		return float64(n), nil
+	case float64:
+		return n, nil
+	}
+	return 0, fmt.Errorf("expected number, got %T", v)
+}
+
 func dictGetName(d pdfDict, key string) string {
 	if n, ok := d[key].(pdfName); ok {
 		return string(n)
