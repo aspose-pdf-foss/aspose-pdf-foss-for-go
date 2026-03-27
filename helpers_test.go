@@ -6,6 +6,8 @@ import (
 	asposepdf "github.com/aspose/pdf-for-go"
 )
 
+const resultDir = "result_files"
+
 // pageCountFromFile opens a PDF file and returns its page count.
 // Calls t.Fatal on any error.
 func pageCountFromFile(t *testing.T, path string) int {

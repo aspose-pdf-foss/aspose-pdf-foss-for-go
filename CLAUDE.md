@@ -46,8 +46,7 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 **`merger.go`**
 - `Merge(outputPath, inputPaths...)` — combines pages from multiple PDFs into one
 
-**`rotate.go`**
-- `Rotate(inputPath, outputPath, angle, pageNums...)` — rotates pages by 90/180/270°; angle adds to existing `/Rotate`; empty `pageNums` rotates all pages
+**`rotate.go`** — `RotationAngle` type and constants (`Rotate0`, `Rotate90`, `Rotate180`, `Rotate270`)
 
 **`page.go`** — Page and PageSize types
 - `PageSizes(inputPath)` — returns dimensions of every page in a PDF file

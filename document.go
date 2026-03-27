@@ -195,6 +195,19 @@ func (d *Document) patchedRotation(key patchKey, e pageRef) RotationAngle {
 	return rot
 }
 
+// pageRotation returns the current /Rotate value for a page (defaults to 0 if absent).
+func pageRotation(doc *rawDocument, p *pageInfo) (RotationAngle, error) {
+	obj, err := doc.getObject(p.objNum)
+	if err != nil {
+		return 0, fmt.Errorf("get page object %d: %w", p.objNum, err)
+	}
+	d, ok := obj.Value.(pdfDict)
+	if !ok {
+		return 0, nil
+	}
+	return RotationAngle(dictGetInt(d, "/Rotate")), nil
+}
+
 // setPatch sets a single key/value in the patch dict for key.
 func (d *Document) setPatch(key patchKey, k string, v pdfValue) {
 	if d.patches[key] == nil {

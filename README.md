@@ -79,16 +79,6 @@ extracted.Save("output.pdf")
 err := pdf.Merge("merged.pdf", "a.pdf", "b.pdf", "c.pdf")
 ```
 
-### Rotating
-
-```go
-// Rotate all pages 90° clockwise
-err := pdf.Rotate("input.pdf", "output.pdf", pdf.Rotate90)
-
-// Rotate specific pages (1-based)
-err = pdf.Rotate("input.pdf", "output.pdf", pdf.Rotate180, 1, 3, 5)
-```
-
 ### Page info
 
 ```go
