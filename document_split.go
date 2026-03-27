@@ -46,7 +46,7 @@ func (d *Document) Extract(ranges ...PageRange) (*Document, error) {
 	}
 	var selected []pageRef
 	for _, r := range ranges {
-		from, to, err := normalizeRange(r.From, r.To, len(d.pages))
+		from, to, err := validateRange(r.From, r.To, len(d.pages))
 		if err != nil {
 			return nil, err
 		}

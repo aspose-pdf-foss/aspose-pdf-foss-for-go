@@ -174,8 +174,8 @@ func (d *Document) Save(outputPath string) error {
 	return err
 }
 
-// normalizeRange validates from/to against [1, total] and returns an error for any invalid input.
-func normalizeRange(from, to, total int) (int, int, error) {
+// validateRange validates from/to against [1, total] and returns an error for any invalid input.
+func validateRange(from, to, total int) (int, int, error) {
 	if from < 1 || from > total {
 		return 0, 0, fmt.Errorf("page range from=%d out of bounds (1..%d)", from, total)
 	}
