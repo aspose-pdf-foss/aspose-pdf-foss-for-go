@@ -17,11 +17,10 @@ const (
 	Rotate270 RotationAngle = 270
 )
 
-// validate returns an error if a is not a valid rotation angle for Rotate calls.
-// Rotate0 is not a valid argument (rotating by zero degrees is a no-op).
+// validate returns an error if a is not a valid PDF rotation angle.
 func (a RotationAngle) validate() error {
-	if a != Rotate90 && a != Rotate180 && a != Rotate270 {
-		return fmt.Errorf("angle must be Rotate90, Rotate180, or Rotate270; got %d", a)
+	if a != Rotate0 && a != Rotate90 && a != Rotate180 && a != Rotate270 {
+		return fmt.Errorf("angle must be Rotate0, Rotate90, Rotate180, or Rotate270; got %d", a)
 	}
 	return nil
 }

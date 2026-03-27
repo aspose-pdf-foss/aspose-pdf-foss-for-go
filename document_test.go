@@ -268,6 +268,20 @@ func TestDocumentInvalidRotateAngle(t *testing.T) {
 	}
 }
 
+func TestDocumentRotateZeroIsNoop(t *testing.T) {
+	doc, err := asposepdf.Open(marketingPDF)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	result, err := doc.Rotate(asposepdf.Rotate0)
+	if err != nil {
+		t.Fatalf("Rotate(Rotate0): %v", err)
+	}
+	if result.PageCount() != doc.PageCount() {
+		t.Errorf("expected %d pages, got %d", doc.PageCount(), result.PageCount())
+	}
+}
+
 func TestDocumentInvalidReorderPageNum(t *testing.T) {
 	doc, err := asposepdf.Open(marketingPDF)
 	if err != nil {

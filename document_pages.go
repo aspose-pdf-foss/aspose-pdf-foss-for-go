@@ -14,6 +14,9 @@ func (d *Document) Rotate(angle RotationAngle, pageNums ...int) (*Document, erro
 	if err := angle.validate(); err != nil {
 		return nil, err
 	}
+	if angle == Rotate0 {
+		return d.withCopiedPatches(), nil
+	}
 	indices, err := resolvePageIndices(len(d.pages), pageNums)
 	if err != nil {
 		return nil, err
