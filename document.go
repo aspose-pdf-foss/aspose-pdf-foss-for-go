@@ -98,27 +98,6 @@ func (d *Document) Rotate(angle RotationAngle, pageNums ...int) error {
 	return nil
 }
 
-// KeepPages keeps only the specified page ranges, discarding all other pages.
-// Ranges are 1-based and inclusive.
-//
-// Example:
-//
-//	doc.KeepPages(asposepdf.PageRange{1, 3}, asposepdf.PageRange{5, 5})
-func (d *Document) KeepPages(ranges ...PageRange) error {
-	if len(ranges) == 0 {
-		return fmt.Errorf("no page ranges specified")
-	}
-	var selected []mutablePage
-	for _, r := range ranges {
-		from, to, err := normalizeRange(r.From, r.To, len(d.pages))
-		if err != nil {
-			return err
-		}
-		selected = append(selected, d.pages[from-1:to]...)
-	}
-	d.pages = selected
-	return nil
-}
 
 // Reorder rearranges pages according to order, a slice of 1-based page numbers.
 // Pages may be repeated or omitted. The result will have len(order) pages.

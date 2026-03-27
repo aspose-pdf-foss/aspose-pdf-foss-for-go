@@ -117,24 +117,25 @@ func TestDocumentRotateAccumulates(t *testing.T) {
 	}
 }
 
-func TestDocumentKeepPages(t *testing.T) {
+func TestDocumentExtractPages(t *testing.T) {
 	doc, err := asposepdf.Open(marketingPDF)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	// Keep only page 1.
-	if err := doc.KeepPages(asposepdf.PageRange{From: 1, To: 1}); err != nil {
-		t.Fatalf("KeepPages: %v", err)
+	// Extract only page 1 into a new document.
+	extracted, err := doc.Extract(asposepdf.PageRange{From: 1, To: 1})
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
 	}
-	if doc.PageCount() != 1 {
-		t.Fatalf("expected 1 page after KeepPages, got %d", doc.PageCount())
+	if extracted.PageCount() != 1 {
+		t.Fatalf("expected 1 page, got %d", extracted.PageCount())
 	}
 
 	outputPath := filepath.Join(resultDir, "document_extract_pages.pdf")
 	if err := os.MkdirAll(resultDir, 0o755); err != nil {
 		t.Fatalf("create result dir: %v", err)
 	}
-	if err := doc.Save(outputPath); err != nil {
+	if err := extracted.Save(outputPath); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
@@ -251,12 +252,12 @@ func TestDocumentInvalidReorderPageNum(t *testing.T) {
 	}
 }
 
-func TestDocumentInvalidKeepPages(t *testing.T) {
+func TestDocumentInvalidExtract(t *testing.T) {
 	doc, err := asposepdf.Open(marketingPDF)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	if err := doc.KeepPages(); err == nil {
+	if _, err := doc.Extract(); err == nil {
 		t.Fatal("expected error for empty ranges")
 	}
 }

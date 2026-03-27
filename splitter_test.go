@@ -69,10 +69,11 @@ func TestDocumentSplitRange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	if err := doc.KeepPages(asposepdf.PageRange{From: 2, To: 2}); err != nil {
-		t.Fatalf("KeepPages: %v", err)
+	page2, err := doc.Extract(asposepdf.PageRange{From: 2, To: 2})
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
 	}
-	paths, err := doc.Split(outDir, func(page, _ int) string {
+	paths, err := page2.Split(outDir, func(page, _ int) string {
 		return fmt.Sprintf("page%03d.pdf", page)
 	})
 	if err != nil {
@@ -83,11 +84,7 @@ func TestDocumentSplitRange(t *testing.T) {
 	}
 
 	// from > to must fail.
-	doc2, err := asposepdf.Open(inputPath)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := doc2.KeepPages(asposepdf.PageRange{From: 3, To: 1}); err == nil {
+	if _, err := doc.Extract(asposepdf.PageRange{From: 3, To: 1}); err == nil {
 		t.Fatal("expected error for invalid range")
 	}
 }
