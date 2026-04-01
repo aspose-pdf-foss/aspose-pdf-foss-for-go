@@ -54,6 +54,9 @@ func OpenStream(r io.Reader) (*Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse PDF: %w", err)
 	}
+	if _, ok := doc.trailer["/Encrypt"]; ok {
+		return nil, fmt.Errorf("parse PDF: encrypted PDF is not supported")
+	}
 	rawPages, err := doc.pages()
 	if err != nil {
 		return nil, fmt.Errorf("read pages: %w", err)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	asposepdf "github.com/aspose/pdf-for-go"
@@ -122,6 +123,29 @@ func TestEncryptEmptyPassword(t *testing.T) {
 	data, _ := os.ReadFile(outputPath)
 	if !bytes.Contains(data, []byte("/Encrypt")) {
 		t.Fatal("output is missing /Encrypt entry")
+	}
+}
+
+// TestOpenEncryptedReturnsError verifies that opening an encrypted PDF returns a clear
+// error instead of a cryptic parsing failure.
+func TestOpenEncryptedReturnsError(t *testing.T) {
+	doc, err := asposepdf.Open(fourPagesPDF)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	doc = doc.SetPassword("user", "owner")
+
+	tmp := filepath.Join(t.TempDir(), "encrypted.pdf")
+	if err := doc.Save(tmp); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	_, err = asposepdf.Open(tmp)
+	if err == nil {
+		t.Fatal("expected error opening encrypted PDF, got nil")
+	}
+	if !strings.Contains(err.Error(), "encrypted") {
+		t.Errorf("expected error to mention encryption, got: %v", err)
 	}
 }
 
