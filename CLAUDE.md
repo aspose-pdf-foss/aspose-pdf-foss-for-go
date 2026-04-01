@@ -43,9 +43,6 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `(*Document).Split() ([]*Document, error)` — returns each page as a separate `*Document`
 - `(*Document).Extract(ranges...) (*Document, error)` — returns a new `*Document` with the selected page ranges
 
-**`merger.go`**
-- `Merge(outputPath, inputPaths...)` — combines pages from multiple PDFs into one
-
 **`rotate.go`** — `RotationAngle` type and constants (`Rotate0`, `Rotate90`, `Rotate180`, `Rotate270`)
 
 **`page.go`** — Page and PageSize types

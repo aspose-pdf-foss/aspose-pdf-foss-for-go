@@ -73,12 +73,6 @@ extracted, err := doc.Extract(
 extracted.Save("output.pdf")
 ```
 
-### Merging
-
-```go
-err := pdf.Merge("merged.pdf", "a.pdf", "b.pdf", "c.pdf")
-```
-
 ### Page info
 
 ```go
