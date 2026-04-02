@@ -22,9 +22,10 @@ type patchKey struct {
 // Document is a PDF document. All operations return new Documents;
 // the receiver is never modified.
 type Document struct {
-	pages         []pageRef
-	patches       map[patchKey]pdfDict
-	encryptConfig *encryptConfig // nil = no encryption
+	pages          []pageRef
+	patches        map[patchKey]pdfDict
+	encryptConfig  *encryptConfig  // nil = no encryption
+	metadataConfig *metadataConfig // nil = preserve source metadata
 }
 
 // Open opens a PDF file and returns a Document.
@@ -77,22 +78,6 @@ func (d *Document) PageCount() int {
 }
 
 
-// Reorder returns a new Document with pages rearranged according to order,
-// a slice of 1-based page numbers. Pages may be repeated or omitted.
-//
-// Example — reverse a 4-page document:
-//
-//	doc, err = doc.Reorder([]int{4, 3, 2, 1})
-func (d *Document) Reorder(order []int) (*Document, error) {
-	result := make([]pageRef, len(order))
-	for i, n := range order {
-		if n < 1 || n > len(d.pages) {
-			return nil, fmt.Errorf("page number %d out of range (1..%d)", n, len(d.pages))
-		}
-		result[i] = d.pages[n-1]
-	}
-	return &Document{pages: result, patches: copyPatches(d.patches)}, nil
-}
 
 // Append returns a new Document with all pages from others appended in order.
 // nil arguments are silently skipped.
@@ -195,9 +180,10 @@ func validateRange(from, to, total int) (int, int, error) {
 // withCopiedPatches returns a shallow copy of d with an independent patches map.
 func (d *Document) withCopiedPatches() *Document {
 	return &Document{
-		pages:         append([]pageRef{}, d.pages...),
-		patches:       copyPatches(d.patches),
-		encryptConfig: d.encryptConfig,
+		pages:          append([]pageRef{}, d.pages...),
+		patches:        copyPatches(d.patches),
+		encryptConfig:  d.encryptConfig,
+		metadataConfig: d.metadataConfig,
 	}
 }
 
