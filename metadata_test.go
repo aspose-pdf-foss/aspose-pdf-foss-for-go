@@ -6,6 +6,21 @@ import (
 	asposepdf "github.com/aspose/pdf-for-go"
 )
 
+func TestMetadataCustomFieldsRoundTrip(t *testing.T) {
+	// 4pages.pdf has no custom fields — Custom must be nil or empty.
+	doc, err := asposepdf.Open(fourPagesPDF)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	meta, err := doc.Metadata()
+	if err != nil {
+		t.Fatalf("Metadata: %v", err)
+	}
+	if len(meta.Custom) != 0 {
+		t.Errorf("expected no custom fields, got %v", meta.Custom)
+	}
+}
+
 func TestGetMetadata(t *testing.T) {
 	meta, err := asposepdf.GetMetadata("testdata/split/4pages.pdf")
 	if err != nil {

@@ -1,6 +1,9 @@
 package asposepdf
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Metadata contains document information from the PDF Info dictionary.
 // Fields not present in the source PDF are empty strings.
@@ -13,6 +16,7 @@ type Metadata struct {
 	Producer     string
 	CreationDate string
 	ModDate      string
+	Custom       map[string]string // arbitrary Info dict entries
 }
 
 // GetMetadata reads the Info metadata from a PDF file.
@@ -49,6 +53,24 @@ func readMetadata(doc *rawDocument) (Metadata, error) {
 	if err != nil {
 		return Metadata{}, fmt.Errorf("read Info dict: %w", err)
 	}
+
+	standardKeys := map[string]bool{
+		"/Title": true, "/Author": true, "/Subject": true, "/Keywords": true,
+		"/Creator": true, "/Producer": true, "/CreationDate": true, "/ModDate": true,
+	}
+	var custom map[string]string
+	for k, v := range infoDict {
+		if standardKeys[k] {
+			continue
+		}
+		if s, ok := v.(string); ok && s != "" {
+			if custom == nil {
+				custom = make(map[string]string)
+			}
+			custom[strings.TrimPrefix(k, "/")] = s
+		}
+	}
+
 	return Metadata{
 		Title:        infoString(infoDict, "/Title"),
 		Author:       infoString(infoDict, "/Author"),
@@ -58,6 +80,7 @@ func readMetadata(doc *rawDocument) (Metadata, error) {
 		Producer:     infoString(infoDict, "/Producer"),
 		CreationDate: infoString(infoDict, "/CreationDate"),
 		ModDate:      infoString(infoDict, "/ModDate"),
+		Custom:       custom,
 	}, nil
 }
 
