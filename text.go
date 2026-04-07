@@ -79,6 +79,9 @@ type textFragment struct {
 	bold        bool
 	italic      bool
 	charSpacing float64
+	colorR      float64 // fill color RGB (0-1)
+	colorG      float64
+	colorB      float64
 }
 
 type textExtractor struct {
@@ -96,6 +99,9 @@ type textExtractor struct {
 	lm           [6]float64 // line matrix
 	ctm          [6]float64 // current transformation matrix
 	ctmStack     [][6]float64
+
+	// Fill color (for text rendering).
+	fillR, fillG, fillB float64 // RGB, 0-1
 
 	// Output: collected text fragments.
 	fragments []textFragment
@@ -260,6 +266,38 @@ func (e *textExtractor) process(ops []contentOp, resources pdfDict) {
 			if len(op.Operands) >= 1 {
 				e.doFormXObject(op.Operands[0], resources)
 			}
+
+		// Fill color operators (text uses fill color).
+		case "g": // gray
+			if len(op.Operands) >= 1 {
+				gray := operandFloat(op.Operands[0])
+				e.fillR, e.fillG, e.fillB = gray, gray, gray
+			}
+		case "rg": // RGB
+			if len(op.Operands) >= 3 {
+				e.fillR = operandFloat(op.Operands[0])
+				e.fillG = operandFloat(op.Operands[1])
+				e.fillB = operandFloat(op.Operands[2])
+			}
+		case "k": // CMYK → RGB
+			if len(op.Operands) >= 4 {
+				c := operandFloat(op.Operands[0])
+				m := operandFloat(op.Operands[1])
+				y := operandFloat(op.Operands[2])
+				k := operandFloat(op.Operands[3])
+				e.fillR = (1 - c) * (1 - k)
+				e.fillG = (1 - m) * (1 - k)
+				e.fillB = (1 - y) * (1 - k)
+			}
+		case "sc", "scn": // generic fill color (DeviceRGB assumed if 3 operands)
+			if len(op.Operands) == 1 {
+				gray := operandFloat(op.Operands[0])
+				e.fillR, e.fillG, e.fillB = gray, gray, gray
+			} else if len(op.Operands) >= 3 {
+				e.fillR = operandFloat(op.Operands[0])
+				e.fillG = operandFloat(op.Operands[1])
+				e.fillB = operandFloat(op.Operands[2])
+			}
 		}
 	}
 }
@@ -396,6 +434,9 @@ func (e *textExtractor) emitRune(r rune) {
 			bold:        e.font.bold,
 			italic:      e.font.italic,
 			charSpacing: e.charSpace,
+			colorR:      e.fillR,
+			colorG:      e.fillG,
+			colorB:      e.fillB,
 		}
 		e.fragments = append(e.fragments, frag)
 		e.curFrag = &e.fragments[len(e.fragments)-1]

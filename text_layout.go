@@ -6,18 +6,26 @@ import (
 	"strings"
 )
 
+// TextColor represents an RGB color with values in [0, 1].
+type TextColor struct {
+	R float64
+	G float64
+	B float64
+}
+
 // TextFragment represents a contiguous run of text with uniform font.
 type TextFragment struct {
-	Text     string
-	X        float64 // horizontal position in points (from left edge)
-	Y        float64 // vertical position in points (from bottom edge)
-	Width    float64 // width in points
-	FontName string  // e.g. "Helvetica", "Arial-BoldMT"
-	FontSize    float64 // effective size in points
-	Height      float64 // text height in points (from ascent/descent metrics)
+	Text        string
+	X           float64   // horizontal position in points (from left edge)
+	Y           float64   // vertical position in points (from bottom edge)
+	Width       float64   // width in points
+	FontName    string    // e.g. "Helvetica", "Arial-BoldMT"
+	FontSize    float64   // effective size in points
+	Height      float64   // text height in points (from ascent/descent metrics)
 	Bold        bool
 	Italic      bool
-	CharSpacing float64 // character spacing (Tc operator) in text space units
+	CharSpacing float64   // character spacing (Tc operator) in text space units
+	Color       TextColor // fill color
 }
 
 // TextLine represents a horizontal line of text fragments at a common Y position.
@@ -111,6 +119,7 @@ func assembleLine(frags []textFragment) TextLine {
 			Bold:        f.bold,
 			Italic:      f.italic,
 			CharSpacing: f.charSpacing,
+			Color:       TextColor{R: f.colorR, G: f.colorG, B: f.colorB},
 		})
 	}
 
