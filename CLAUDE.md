@@ -59,8 +59,9 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `(*Page).ExtractText() (string, error)` — returns the text content of a page in visual reading order; unknown font characters become U+FFFD
 - `(*Page).ExtractTextWithLayout() ([]TextLine, error)` — returns structured text lines in visual reading order with coordinates and font info
 - `PageSize` struct — Width, Height in points (1/72 inch)
+- `TextColor` struct — R, G, B float64 (values in [0,1])
 - `TextLine` struct — Text, Y, Fragments []TextFragment
-- `TextFragment` struct — Text, X, FontName, FontSize
+- `TextFragment` struct — Text, X, Y, Width, FontName, FontSize, Height, Bold, Italic, CharSpacing, Color TextColor, IsSubscript, IsSuperscript
 
 **`page_labels.go`** — page label support
 - `(*Page).Label()` — formatted page label from the document's `/PageLabels` number tree; falls back to decimal page number if absent
