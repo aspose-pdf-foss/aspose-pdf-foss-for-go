@@ -75,6 +75,8 @@ type textFragment struct {
 	endX     float64 // device-space x after last glyph advance
 	fontName string
 	fontSize float64 // effective font size (fontSize * textScaleX)
+	bold     bool
+	italic   bool
 }
 
 type textExtractor struct {
@@ -384,6 +386,8 @@ func (e *textExtractor) emitRune(r rune) {
 			y:        y,
 			fontName: fontName,
 			fontSize: effectiveFontSize,
+			bold:     e.font.bold,
+			italic:   e.font.italic,
 		}
 		e.fragments = append(e.fragments, frag)
 		e.curFrag = &e.fragments[len(e.fragments)-1]

@@ -1,5 +1,7 @@
 package asposepdf
 
+import "strings"
+
 // fontInfo holds the resolved encoding for a PDF font.
 type fontInfo struct {
 	name      string             // /BaseFont value, e.g. "/Helvetica"
@@ -10,6 +12,8 @@ type fontInfo struct {
 	defaultW  float64            // /DW default width for CIDFont (1000 if absent)
 	isType0   bool               // true = two-byte character codes (composite font)
 	known     bool               // false if encoding could not be determined
+	bold      bool
+	italic    bool
 }
 
 // resolveFont resolves a font dictionary to a fontInfo.
@@ -34,6 +38,9 @@ func resolveFont(objects map[int]*pdfObject, fontDict pdfDict) fontInfo {
 			}
 		}
 	}
+
+	// Detect bold/italic from font name and /FontDescriptor /Flags.
+	fi.bold, fi.italic = detectBoldItalic(objects, fontDict, name)
 
 	// For Type0: toUnicode and known are already set above.
 	// Resolve descendant CIDFont for widths, then return.
@@ -239,4 +246,46 @@ func defaultEncodingForFont(name string) [256]rune {
 	default:
 		return standardEncoding
 	}
+}
+
+// detectBoldItalic detects bold/italic from font name heuristics
+// and /FontDescriptor /Flags (PDF spec Table 123: bit 3 = Italic, bit 19 = ForceBold).
+func detectBoldItalic(objects map[int]*pdfObject, fontDict pdfDict, baseFontName string) (bold, italic bool) {
+	lname := strings.ToLower(baseFontName)
+	bold = strings.Contains(lname, "bold")
+	italic = strings.Contains(lname, "italic") || strings.Contains(lname, "oblique")
+
+	// Check /FontDescriptor /Flags for more reliable detection.
+	fdVal, ok := fontDict["/FontDescriptor"]
+	if !ok {
+		// For Type0, check descendant font's FontDescriptor.
+		if descVal, ok := fontDict["/DescendantFonts"]; ok {
+			descResolved := resolveRef(objects, descVal)
+			if descArr, ok := descResolved.(pdfArray); ok && len(descArr) > 0 {
+				if cidDict, ok := resolveRefToDict(objects, descArr[0]); ok {
+					fdVal, ok = cidDict["/FontDescriptor"]
+					if !ok {
+						return
+					}
+				}
+			}
+		}
+		if fdVal == nil {
+			return
+		}
+	}
+
+	fdDict, ok := resolveRefToDict(objects, fdVal)
+	if !ok {
+		return
+	}
+
+	flags := dictGetInt(fdDict, "/Flags")
+	if flags&(1<<2) != 0 { // bit 3 (0-indexed bit 2): Italic
+		italic = true
+	}
+	if flags&(1<<18) != 0 { // bit 19 (0-indexed bit 18): ForceBold
+		bold = true
+	}
+	return
 }
