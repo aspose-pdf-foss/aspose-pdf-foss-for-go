@@ -282,6 +282,56 @@ func TestStandard14Widths(t *testing.T) {
 	}
 }
 
+func TestResolveFontWidthsFromDict(t *testing.T) {
+	objects := map[int]*pdfObject{}
+	fontDict := pdfDict{
+		"/Type":      pdfName("/Font"),
+		"/Subtype":   pdfName("/Type1"),
+		"/BaseFont":  pdfName("/Helvetica"),
+		"/Encoding":  pdfName("/WinAnsiEncoding"),
+		"/FirstChar": 32,
+		"/LastChar":  34,
+		"/Widths":    pdfArray{250, 300, 350},
+	}
+	fi := resolveFont(objects, fontDict)
+	if fi.widths[32] != 250 {
+		t.Errorf("widths[32]: got %v, want 250", fi.widths[32])
+	}
+	if fi.widths[33] != 300 {
+		t.Errorf("widths[33]: got %v, want 300", fi.widths[33])
+	}
+	if fi.widths[34] != 350 {
+		t.Errorf("widths[34]: got %v, want 350", fi.widths[34])
+	}
+}
+
+func TestResolveFontWidthsStandard14Fallback(t *testing.T) {
+	objects := map[int]*pdfObject{}
+	fontDict := pdfDict{
+		"/Type":     pdfName("/Font"),
+		"/Subtype":  pdfName("/Type1"),
+		"/BaseFont": pdfName("/Helvetica"),
+		"/Encoding": pdfName("/WinAnsiEncoding"),
+	}
+	fi := resolveFont(objects, fontDict)
+	if fi.widths[65] != 667 {
+		t.Errorf("widths[65] (Helvetica 'A'): got %v, want 667", fi.widths[65])
+	}
+}
+
+func TestResolveFontWidthsUnknownFallback(t *testing.T) {
+	objects := map[int]*pdfObject{}
+	fontDict := pdfDict{
+		"/Type":     pdfName("/Font"),
+		"/Subtype":  pdfName("/Type1"),
+		"/BaseFont": pdfName("/CustomFont+ABC"),
+	}
+	fi := resolveFont(objects, fontDict)
+	if fi.widths[65] != 600 {
+		t.Errorf("widths[65]: got %v, want 600 (fallback)", fi.widths[65])
+	}
+}
+
 func TestParseContentStreamInlineImage(t *testing.T) {
 	data := []byte("BT (Before) Tj ET BI /W 1 /H 1 /CS /G /BPC 8 ID \x00 EI BT (After) Tj ET")
 	ops, err := parseContentStream(data)
