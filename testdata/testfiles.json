@@ -72,5 +72,14 @@
     ["PdfWithTable.pdf"],
     ["alfa.pdf"],
     ["marketing.pdf"]
+  ],
+
+  "TestExtractTextWithLayoutFiles": [
+    ["4pages.pdf"],
+    ["Binder1.pdf"],
+    ["PdfWithLinks.pdf"],
+    ["PdfWithTable.pdf"],
+    ["alfa.pdf"],
+    ["marketing.pdf"]
   ]
 }
