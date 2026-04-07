@@ -10,6 +10,8 @@ import (
 type TextFragment struct {
 	Text     string
 	X        float64 // horizontal position in points (from left edge)
+	Y        float64 // vertical position in points (from bottom edge)
+	Width    float64 // width in points
 	FontName string  // e.g. "Helvetica", "Arial-BoldMT"
 	FontSize float64 // effective size in points
 }
@@ -97,6 +99,8 @@ func assembleLine(frags []textFragment) TextLine {
 		line.Fragments = append(line.Fragments, TextFragment{
 			Text:     text,
 			X:        f.x,
+			Y:        f.y,
+			Width:    f.endX - f.x,
 			FontName: cleanFontName(f.fontName),
 			FontSize: f.fontSize,
 		})

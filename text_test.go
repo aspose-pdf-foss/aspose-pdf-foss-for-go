@@ -2,6 +2,7 @@ package asposepdf_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -318,8 +319,15 @@ func TestExtractTextWithLayoutSynthetic(t *testing.T) {
 	if len(lines[0].Fragments) < 1 {
 		t.Fatal("expected at least 1 fragment in line 0")
 	}
-	if lines[0].Fragments[0].FontName != "Helvetica" {
-		t.Errorf("fragment font=%q, want 'Helvetica'", lines[0].Fragments[0].FontName)
+	frag0 := lines[0].Fragments[0]
+	if frag0.FontName != "Helvetica" {
+		t.Errorf("fragment font=%q, want 'Helvetica'", frag0.FontName)
+	}
+	if frag0.Y != 700 {
+		t.Errorf("fragment Y=%v, want 700", frag0.Y)
+	}
+	if frag0.Width <= 0 {
+		t.Errorf("fragment Width=%v, want > 0", frag0.Width)
 	}
 
 	// Last line should be "Footer" at y=50.
@@ -354,6 +362,42 @@ func TestExtractTextVisualOrder(t *testing.T) {
 	}
 	if bodyIdx > footerIdx {
 		t.Errorf("expected Body before Footer in visual order, got text=%q", text)
+	}
+}
+
+func TestExtractTextWithLayoutFiles(t *testing.T) {
+	for _, inputPath := range testFiles(t) {
+		t.Run(stem(inputPath), func(t *testing.T) {
+			doc, err := asposepdf.Open(inputPath)
+			if err != nil {
+				t.Fatalf("Open: %v", err)
+			}
+			allPages, err := doc.ExtractTextWithLayout()
+			if err != nil {
+				t.Fatalf("ExtractTextWithLayout: %v", err)
+			}
+			if len(allPages) != doc.PageCount() {
+				t.Fatalf("expected %d pages, got %d", doc.PageCount(), len(allPages))
+			}
+
+			outDir := filepath.Join(resultDir, "TestExtractTextWithLayoutFiles", stem(inputPath))
+			if err := os.MkdirAll(outDir, 0o755); err != nil {
+				t.Fatalf("mkdir: %v", err)
+			}
+
+			for i, lines := range allPages {
+				data, err := json.MarshalIndent(lines, "", "  ")
+				if err != nil {
+					t.Fatalf("json marshal page %d: %v", i+1, err)
+				}
+				pagePath := filepath.Join(outDir, fmt.Sprintf("page_%d.json", i+1))
+				if err := os.WriteFile(pagePath, data, 0o644); err != nil {
+					t.Fatalf("write page %d: %v", i+1, err)
+				}
+			}
+
+			t.Logf("%s: saved layout for %d pages to %s", stem(inputPath), len(allPages), outDir)
+		})
 	}
 }
 
