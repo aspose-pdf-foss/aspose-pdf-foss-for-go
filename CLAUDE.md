@@ -39,6 +39,7 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `(*Document).Save(outputPath) error` — writes the document to a file
 - `(*Document).Metadata() (Metadata, error)` — returns Info metadata read from live in-memory state
 - `(*Document).ExtractText() ([]string, error)` — returns text for all pages (one entry per page)
+- `(*Document).ExtractTextWithLayout() ([][]TextLine, error)` — returns structured text lines for each page
 
 **`document_pages.go`** — split/extract operations
 - `(*Document).Split() ([]*Document, error)` — returns each page as a separate `*Document`
@@ -55,8 +56,11 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `(*Page).TrimBox()` — intended trim dimensions; falls back to CropBox then MediaBox
 - `(*Page).BleedBox()` — production bleed region; falls back to CropBox then MediaBox
 - `(*Page).ArtBox()` — meaningful content extent; falls back to CropBox then MediaBox
-- `(*Page).ExtractText() (string, error)` — returns the text content of a page; unknown font characters become U+FFFD
+- `(*Page).ExtractText() (string, error)` — returns the text content of a page in visual reading order; unknown font characters become U+FFFD
+- `(*Page).ExtractTextWithLayout() ([]TextLine, error)` — returns structured text lines in visual reading order with coordinates and font info
 - `PageSize` struct — Width, Height in points (1/72 inch)
+- `TextLine` struct — Text, Y, Fragments []TextFragment
+- `TextFragment` struct — Text, X, FontName, FontSize
 
 **`page_labels.go`** — page label support
 - `(*Page).Label()` — formatted page label from the document's `/PageLabels` number tree; falls back to decimal page number if absent
@@ -103,14 +107,15 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 
 `rewriteRefs` deep-copies a `pdfValue` tree translating all `pdfRef` IDs through an id-map. Used by `Append` to merge objects from another document without ID collisions.
 
-### Text extraction (`text.go`, `content_parser.go`, `font.go`, `font_metrics.go`, `encoding.go`, `cmap.go`)
+### Text extraction (`text.go`, `text_layout.go`, `content_parser.go`, `font.go`, `font_metrics.go`, `encoding.go`, `cmap.go`)
 
 1. `parseContentStream(data)` tokenizes content stream bytes into `contentOp` structs (operator + operands), reusing the existing `lexer`
 2. `resolveFont(objects, fontDict)` maps font dictionaries to `fontInfo` — supports WinAnsi, MacRoman, Standard encodings, `/Differences`, standard 14 fonts, Symbol, ZapfDingbats, ToUnicode CMap, Type0/CIDFont with Identity-H encoding; resolves glyph widths from `/Widths`, Standard 14 metrics, CID `/DW`+`/W`, or fallback
 3. `parseCMap(data)` (`cmap.go`) parses ToUnicode CMap streams — handles `beginbfchar`/`endbfchar` and `beginbfrange`/`endbfrange` (sequential and array forms); returns `map[uint16]rune`
 4. `textExtractor` state machine processes operators (BT/ET/Tf/Td/Tm/Tj/TJ/Tz/etc.), tracking text matrix position, font, spacing, and horizontal scaling; advances text matrix by glyph width after each character (PDF spec 9.4.4); splits into single-byte and multi-byte paths for Type0/CIDFont
-5. Space/newline insertion uses font metrics: horizontal gap > spaceWidth×0.3 → space, vertical shift > fontSize×0.5 → newline
-6. Form XObjects (`Do` operator) are recursively processed with inherited CTM and overridden resources
+5. Fragment collection: `emitRune` collects `textFragment` structs with (x, y, endX, fontName, fontSize); new fragment on font change, Y gap > fontSize×0.5, or X gap > spaceWidth×0.3
+6. Visual sorting (`text_layout.go`): `groupFragmentsIntoLines` sorts fragments by Y descending then X ascending, groups by Y proximity into `TextLine` structs; `ExtractTextWithLayout` returns the structured result; `ExtractText` delegates to same pipeline
+7. Form XObjects (`Do` operator) are recursively processed with inherited CTM and overridden resources
 
 ## Output conventions
 
