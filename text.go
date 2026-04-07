@@ -105,7 +105,28 @@ func identityMatrix() [6]float64 {
 }
 
 func (e *textExtractor) text() string {
-	return strings.TrimSpace(e.buf.String())
+	return cleanExtractedText(e.buf.String())
+}
+
+// cleanExtractedText trims trailing whitespace from each line and
+// collapses runs of more than two consecutive blank lines into two.
+func cleanExtractedText(s string) string {
+	lines := strings.Split(s, "\n")
+	blank := 0
+	var out []string
+	for _, line := range lines {
+		line = strings.TrimRight(line, " \t")
+		if line == "" {
+			blank++
+			if blank > 2 {
+				continue
+			}
+		} else {
+			blank = 0
+		}
+		out = append(out, line)
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
 func (e *textExtractor) process(ops []contentOp, resources pdfDict) {
