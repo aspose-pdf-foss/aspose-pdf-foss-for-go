@@ -73,10 +73,11 @@ type textFragment struct {
 	text     strings.Builder
 	x, y     float64 // device-space position of first rune
 	endX     float64 // device-space x after last glyph advance
-	fontName string
-	fontSize float64 // effective font size (fontSize * textScaleX)
-	bold     bool
-	italic   bool
+	fontName    string
+	fontSize    float64 // effective font size (fontSize * textScaleX)
+	bold        bool
+	italic      bool
+	charSpacing float64
 }
 
 type textExtractor struct {
@@ -382,12 +383,13 @@ func (e *textExtractor) emitRune(r rune) {
 	if needNew {
 		e.flushFragment()
 		frag := textFragment{
-			x:        x,
-			y:        y,
-			fontName: fontName,
-			fontSize: effectiveFontSize,
-			bold:     e.font.bold,
-			italic:   e.font.italic,
+			x:           x,
+			y:           y,
+			fontName:    fontName,
+			fontSize:    effectiveFontSize,
+			bold:        e.font.bold,
+			italic:      e.font.italic,
+			charSpacing: e.charSpace,
 		}
 		e.fragments = append(e.fragments, frag)
 		e.curFrag = &e.fragments[len(e.fragments)-1]

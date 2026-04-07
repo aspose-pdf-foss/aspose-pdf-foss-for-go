@@ -13,9 +13,10 @@ type TextFragment struct {
 	Y        float64 // vertical position in points (from bottom edge)
 	Width    float64 // width in points
 	FontName string  // e.g. "Helvetica", "Arial-BoldMT"
-	FontSize float64 // effective size in points
-	Bold     bool
-	Italic   bool
+	FontSize    float64 // effective size in points
+	Bold        bool
+	Italic      bool
+	CharSpacing float64 // character spacing (Tc operator) in text space units
 }
 
 // TextLine represents a horizontal line of text fragments at a common Y position.
@@ -104,9 +105,10 @@ func assembleLine(frags []textFragment) TextLine {
 			Y:        f.y,
 			Width:    f.endX - f.x,
 			FontName: cleanFontName(f.fontName),
-			FontSize: f.fontSize,
-			Bold:     f.bold,
-			Italic:   f.italic,
+			FontSize:    f.fontSize,
+			Bold:        f.bold,
+			Italic:      f.italic,
+			CharSpacing: f.charSpacing,
 		})
 	}
 
