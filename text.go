@@ -75,6 +75,7 @@ type textFragment struct {
 	endX     float64 // device-space x after last glyph advance
 	fontName    string
 	fontSize    float64 // effective font size (fontSize * textScaleX)
+	height      float64 // (ascent - descent) / 1000 * fontSize
 	bold        bool
 	italic      bool
 	charSpacing float64
@@ -382,11 +383,16 @@ func (e *textExtractor) emitRune(r rune) {
 
 	if needNew {
 		e.flushFragment()
+		height := effectiveFontSize // fallback
+		if e.font.ascent != 0 || e.font.descent != 0 {
+			height = (e.font.ascent - e.font.descent) / 1000.0 * effectiveFontSize
+		}
 		frag := textFragment{
 			x:           x,
 			y:           y,
 			fontName:    fontName,
 			fontSize:    effectiveFontSize,
+			height:      height,
 			bold:        e.font.bold,
 			italic:      e.font.italic,
 			charSpacing: e.charSpace,

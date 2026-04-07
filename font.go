@@ -14,6 +14,8 @@ type fontInfo struct {
 	known     bool               // false if encoding could not be determined
 	bold      bool
 	italic    bool
+	ascent    float64 // from /FontDescriptor /Ascent (in 1/1000 text space)
+	descent   float64 // from /FontDescriptor /Descent (negative, in 1/1000 text space)
 }
 
 // resolveFont resolves a font dictionary to a fontInfo.
@@ -39,8 +41,8 @@ func resolveFont(objects map[int]*pdfObject, fontDict pdfDict) fontInfo {
 		}
 	}
 
-	// Detect bold/italic from font name and /FontDescriptor /Flags.
-	fi.bold, fi.italic = detectBoldItalic(objects, fontDict, name)
+	// Resolve /FontDescriptor for bold/italic flags and ascent/descent.
+	resolveFontDescriptor(objects, fontDict, name, &fi)
 
 	// For Type0: toUnicode and known are already set above.
 	// Resolve descendant CIDFont for widths, then return.
@@ -248,14 +250,15 @@ func defaultEncodingForFont(name string) [256]rune {
 	}
 }
 
-// detectBoldItalic detects bold/italic from font name heuristics
-// and /FontDescriptor /Flags (PDF spec Table 123: bit 3 = Italic, bit 19 = ForceBold).
-func detectBoldItalic(objects map[int]*pdfObject, fontDict pdfDict, baseFontName string) (bold, italic bool) {
+// resolveFontDescriptor reads /FontDescriptor to set bold, italic, ascent, descent.
+// Bold/italic also use font name heuristics as fallback.
+// PDF spec Table 123: bit 3 = Italic, bit 19 = ForceBold.
+func resolveFontDescriptor(objects map[int]*pdfObject, fontDict pdfDict, baseFontName string, fi *fontInfo) {
 	lname := strings.ToLower(baseFontName)
-	bold = strings.Contains(lname, "bold")
-	italic = strings.Contains(lname, "italic") || strings.Contains(lname, "oblique")
+	fi.bold = strings.Contains(lname, "bold")
+	fi.italic = strings.Contains(lname, "italic") || strings.Contains(lname, "oblique")
 
-	// Check /FontDescriptor /Flags for more reliable detection.
+	// Find /FontDescriptor dict.
 	fdVal, ok := fontDict["/FontDescriptor"]
 	if !ok {
 		// For Type0, check descendant font's FontDescriptor.
@@ -281,11 +284,18 @@ func detectBoldItalic(objects map[int]*pdfObject, fontDict pdfDict, baseFontName
 	}
 
 	flags := dictGetInt(fdDict, "/Flags")
-	if flags&(1<<2) != 0 { // bit 3 (0-indexed bit 2): Italic
-		italic = true
+	if flags&(1<<2) != 0 {
+		fi.italic = true
 	}
-	if flags&(1<<18) != 0 { // bit 19 (0-indexed bit 18): ForceBold
-		bold = true
+	if flags&(1<<18) != 0 {
+		fi.bold = true
 	}
-	return
+
+	// Read ascent/descent metrics.
+	if v, ok := fdDict["/Ascent"]; ok {
+		fi.ascent = operandFloat(v)
+	}
+	if v, ok := fdDict["/Descent"]; ok {
+		fi.descent = operandFloat(v)
+	}
 }

@@ -14,6 +14,7 @@ type TextFragment struct {
 	Width    float64 // width in points
 	FontName string  // e.g. "Helvetica", "Arial-BoldMT"
 	FontSize    float64 // effective size in points
+	Height      float64 // text height in points (from ascent/descent metrics)
 	Bold        bool
 	Italic      bool
 	CharSpacing float64 // character spacing (Tc operator) in text space units
@@ -106,6 +107,7 @@ func assembleLine(frags []textFragment) TextLine {
 			Width:    f.endX - f.x,
 			FontName: cleanFontName(f.fontName),
 			FontSize:    f.fontSize,
+			Height:      f.height,
 			Bold:        f.bold,
 			Italic:      f.italic,
 			CharSpacing: f.charSpacing,
