@@ -266,15 +266,59 @@ func (e *textExtractor) showString(operand pdfValue) {
 	if !ok {
 		return
 	}
+	if e.font.isType0 {
+		e.showStringMultiByte(s)
+	} else {
+		e.showStringSingleByte(s)
+	}
+}
+
+func (e *textExtractor) showStringSingleByte(s string) {
 	for i := 0; i < len(s); i++ {
 		code := s[i]
 		r := e.font.encoding[code]
+		// If toUnicode is available, prefer it for single-byte fonts too.
+		if e.font.toUnicode != nil {
+			if tr, ok := e.font.toUnicode[uint16(code)]; ok {
+				r = tr
+			}
+		}
 		if r == 0 {
 			r = '\uFFFD'
 		}
 		e.emitRune(r)
 		e.advanceGlyph(code)
 	}
+}
+
+func (e *textExtractor) showStringMultiByte(s string) {
+	for i := 0; i+1 < len(s); i += 2 {
+		code := uint16(s[i])<<8 | uint16(s[i+1])
+		r := rune(0)
+		if e.font.toUnicode != nil {
+			r = e.font.toUnicode[code]
+		}
+		if r == 0 {
+			r = '\uFFFD'
+		}
+		e.emitRune(r)
+		e.advanceGlyphCID(code)
+	}
+}
+
+func (e *textExtractor) advanceGlyphCID(code uint16) {
+	w0 := e.font.defaultW
+	if cw, ok := e.font.cidWidths[code]; ok {
+		w0 = cw
+	}
+	tx := (w0/1000.0*e.fontSize + e.charSpace) * e.horizScaling
+	if code == 32 {
+		tx += e.wordSpace * e.horizScaling
+	}
+	e.tm = matMul(translateMatrix(tx, 0), e.tm)
+	// Update lastX/lastY to the post-advance position so that the next
+	// emitRune sees only the true inter-glyph gap (not the glyph width).
+	e.lastX, e.lastY = e.currentPos()
 }
 
 func (e *textExtractor) showTJ(operand pdfValue) {
@@ -285,14 +329,10 @@ func (e *textExtractor) showTJ(operand pdfValue) {
 	for _, elem := range arr {
 		switch v := elem.(type) {
 		case string:
-			for i := 0; i < len(v); i++ {
-				code := v[i]
-				r := e.font.encoding[code]
-				if r == 0 {
-					r = '\uFFFD'
-				}
-				e.emitRune(r)
-				e.advanceGlyph(code)
+			if e.font.isType0 {
+				e.showStringMultiByte(v)
+			} else {
+				e.showStringSingleByte(v)
 			}
 		case int:
 			displacement := -float64(v) / 1000.0 * e.fontSize

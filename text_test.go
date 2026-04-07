@@ -258,6 +258,38 @@ func TestExtractTextHorizScaling(t *testing.T) {
 	}
 }
 
+func TestExtractTextType0(t *testing.T) {
+	// Build a Type0 font PDF with ToUnicode CMap.
+	cmapData := []byte("begincmap\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n3 beginbfchar\n<0003> <0048>\n<0004> <0069>\n<0005> <0021>\nendbfchar\nendcmap")
+	cmapStream := fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(cmapData), cmapData)
+	cidFontDict := "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /TestFont /DW 600 /W [3 [500 400 300]] /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> >>"
+	// Content: two-byte codes: 0x0003=H, 0x0004=i, 0x0005=!
+	pageContent := "BT /F1 12 Tf 100 700 Td (\x00\x03\x00\x04\x00\x05) Tj ET"
+	pageStream := fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(pageContent), pageContent)
+
+	pdf := extAssemblePDF([]extTestObj{
+		{1, []byte("<< /Type /Catalog /Pages 2 0 R >>")},
+		{2, []byte("<< /Type /Pages /Kids [3 0 R] /Count 1 >>")},
+		{3, []byte("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>")},
+		{4, []byte(pageStream)},
+		{5, []byte("<< /Type /Font /Subtype /Type0 /BaseFont /TestFont /Encoding /Identity-H /ToUnicode 7 0 R /DescendantFonts [6 0 R] >>")},
+		{6, []byte(cidFontDict)},
+		{7, []byte(cmapStream)},
+	})
+	doc, err := asposepdf.OpenStream(bytes.NewReader(pdf))
+	if err != nil {
+		t.Fatalf("OpenStream: %v", err)
+	}
+	page, _ := doc.Page(1)
+	text, err := page.ExtractText()
+	if err != nil {
+		t.Fatalf("ExtractText: %v", err)
+	}
+	if !strings.Contains(text, "Hi!") {
+		t.Errorf("text=%q, want it to contain 'Hi!'", text)
+	}
+}
+
 // --- Test helpers ---
 
 type extTestObj struct {
