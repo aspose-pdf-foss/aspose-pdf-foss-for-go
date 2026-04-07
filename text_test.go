@@ -290,6 +290,48 @@ func TestExtractTextType0(t *testing.T) {
 	}
 }
 
+func TestExtractTextWithLayoutSynthetic(t *testing.T) {
+	// Two BT/ET blocks: footer at y=50, body at y=700.
+	content := []byte("BT /F1 12 Tf 100 50 Td (Footer) Tj ET BT /F1 12 Tf 100 700 Td (Body Text) Tj ET")
+	pdf := buildPDFWithContent(content)
+	doc, err := asposepdf.OpenStream(bytes.NewReader(pdf))
+	if err != nil {
+		t.Fatalf("OpenStream: %v", err)
+	}
+	page, _ := doc.Page(1)
+	lines, err := page.ExtractTextWithLayout()
+	if err != nil {
+		t.Fatalf("ExtractTextWithLayout: %v", err)
+	}
+
+	if len(lines) < 2 {
+		t.Fatalf("expected at least 2 lines, got %d", len(lines))
+	}
+
+	// First line (top) should be "Body Text" at y=700.
+	if lines[0].Text != "Body Text" {
+		t.Errorf("line 0 text=%q, want 'Body Text'", lines[0].Text)
+	}
+	if lines[0].Y != 700 {
+		t.Errorf("line 0 Y=%v, want 700", lines[0].Y)
+	}
+	if len(lines[0].Fragments) < 1 {
+		t.Fatal("expected at least 1 fragment in line 0")
+	}
+	if lines[0].Fragments[0].FontName != "Helvetica" {
+		t.Errorf("fragment font=%q, want 'Helvetica'", lines[0].Fragments[0].FontName)
+	}
+
+	// Last line should be "Footer" at y=50.
+	last := lines[len(lines)-1]
+	if last.Text != "Footer" {
+		t.Errorf("last line text=%q, want 'Footer'", last.Text)
+	}
+	if last.Y != 50 {
+		t.Errorf("last line Y=%v, want 50", last.Y)
+	}
+}
+
 func TestExtractTextVisualOrder(t *testing.T) {
 	// Content stream draws footer first (y=50), then body (y=700).
 	// ExtractText should output body first (top-to-bottom).
