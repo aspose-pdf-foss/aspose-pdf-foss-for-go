@@ -150,6 +150,37 @@ func TestExtractTextFormXObject(t *testing.T) {
 	}
 }
 
+func TestExtractTextFiles(t *testing.T) {
+	for _, inputPath := range testFiles(t) {
+		t.Run(stem(inputPath), func(t *testing.T) {
+			doc, err := asposepdf.Open(inputPath)
+			if err != nil {
+				t.Fatalf("Open: %v", err)
+			}
+			texts, err := doc.ExtractText()
+			if err != nil {
+				t.Fatalf("ExtractText: %v", err)
+			}
+			if len(texts) != doc.PageCount() {
+				t.Fatalf("expected %d pages, got %d", doc.PageCount(), len(texts))
+			}
+			for i, text := range texts {
+				trimmed := strings.TrimSpace(text)
+				if len(trimmed) == 0 {
+					t.Logf("page %d: empty text (may be image-only)", i+1)
+					continue
+				}
+				cleaned := strings.ReplaceAll(trimmed, "\uFFFD", "")
+				cleaned = strings.TrimSpace(cleaned)
+				if len(cleaned) == 0 {
+					t.Logf("page %d: all characters are U+FFFD (unknown encoding)", i+1)
+				}
+			}
+			t.Logf("%s: extracted text from %d pages", stem(inputPath), len(texts))
+		})
+	}
+}
+
 // --- Test helpers ---
 
 type extTestObj struct {
