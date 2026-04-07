@@ -235,6 +235,29 @@ func TestExtractTextNoSpuriousSpaces(t *testing.T) {
 	}
 }
 
+func TestExtractTextHorizScaling(t *testing.T) {
+	// Tz 200 doubles horizontal scaling — glyph advance doubles.
+	// Helvetica 'A' width = 667, at 12pt normal advance = 667/1000*12 = 8.004
+	// With Tz 200: advance = 8.004 * 2 = 16.008
+	content := []byte("BT /F1 12 Tf 200 Tz 100 700 Td (A) Tj 16.008 0 Td (B) Tj ET")
+	pdf := buildPDFWithContent(content)
+	doc, err := asposepdf.OpenStream(bytes.NewReader(pdf))
+	if err != nil {
+		t.Fatalf("OpenStream: %v", err)
+	}
+	page, _ := doc.Page(1)
+	text, err := page.ExtractText()
+	if err != nil {
+		t.Fatalf("ExtractText: %v", err)
+	}
+	if strings.Contains(text, "A B") {
+		t.Errorf("spurious space with Tz: %q", text)
+	}
+	if !strings.Contains(text, "AB") {
+		t.Errorf("text=%q, want 'AB'", text)
+	}
+}
+
 // --- Test helpers ---
 
 type extTestObj struct {
