@@ -2,7 +2,6 @@ package asposepdf
 
 import (
 	"math"
-	"sort"
 	"strings"
 )
 
@@ -422,61 +421,6 @@ func (e *textExtractor) computeSpaceWidth() float64 {
 		spaceWidth = 1
 	}
 	return spaceWidth
-}
-
-func buildTextFromFragments(frags []textFragment) string {
-	if len(frags) == 0 {
-		return ""
-	}
-	// Sort by Y desc then X asc (top-to-bottom, left-to-right visual order).
-	sort.Slice(frags, func(i, j int) bool {
-		if math.Abs(frags[i].y-frags[j].y) > 0.5 {
-			return frags[i].y > frags[j].y
-		}
-		return frags[i].x < frags[j].x
-	})
-
-	var buf strings.Builder
-	prevY := frags[0].y
-	prevEndX := frags[0].x
-	first := true
-	for _, f := range frags {
-		text := f.text.String()
-		if text == "" {
-			continue
-		}
-		if first {
-			buf.WriteString(text)
-			prevY = f.y
-			prevEndX = f.endX
-			first = false
-			continue
-		}
-		dy := prevY - f.y
-		threshold := f.fontSize * 0.3
-		if threshold < 1 {
-			threshold = 1
-		}
-		if math.Abs(dy) > threshold {
-			buf.WriteByte('\n')
-			if dy > f.fontSize*1.5 {
-				buf.WriteByte('\n')
-			}
-		} else {
-			gap := f.x - prevEndX
-			spaceThreshold := f.fontSize * 0.3
-			if spaceThreshold < 1 {
-				spaceThreshold = 1
-			}
-			if gap > spaceThreshold {
-				buf.WriteByte(' ')
-			}
-		}
-		buf.WriteString(text)
-		prevY = f.y
-		prevEndX = f.endX
-	}
-	return buf.String()
 }
 
 func (e *textExtractor) currentPos() (float64, float64) {
