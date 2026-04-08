@@ -117,6 +117,7 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 5. Fragment collection: `emitRune` collects `textFragment` structs with (x, y, endX, fontName, fontSize); new fragment on font change, Y gap > fontSize×0.5, or X gap > spaceWidth×0.3
 6. Visual sorting (`text_layout.go`): `groupFragmentsIntoLines` sorts fragments by Y descending then X ascending, groups by Y proximity into `TextLine` structs; `ExtractTextWithLayout` returns the structured result; `ExtractText` delegates to same pipeline
 7. Form XObjects (`Do` operator) are recursively processed with inherited CTM and overridden resources
+8. Marked content (`BDC`/`BMC`/`EMC`): when `BDC` carries `/ActualText` in its properties, glyph emission is suppressed and the replacement text is emitted at `EMC`; supports inline dicts, `/Properties` resource lookup, UTF-16BE strings, and nesting
 
 ## Output conventions
 
