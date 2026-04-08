@@ -111,7 +111,7 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 ### Text extraction (`text.go`, `text_layout.go`, `content_parser.go`, `font.go`, `font_metrics.go`, `encoding.go`, `cmap.go`)
 
 1. `parseContentStream(data)` tokenizes content stream bytes into `contentOp` structs (operator + operands), reusing the existing `lexer`
-2. `resolveFont(objects, fontDict)` maps font dictionaries to `fontInfo` — supports WinAnsi, MacRoman, Standard encodings, `/Differences`, standard 14 fonts, Symbol, ZapfDingbats, ToUnicode CMap, Type0/CIDFont with Identity-H encoding; resolves glyph widths from `/Widths`, Standard 14 metrics, CID `/DW`+`/W`, or fallback
+2. `resolveFont(objects, fontDict)` maps font dictionaries to `fontInfo` — supports WinAnsi, MacRoman, MacExpert, Standard encodings, `/Differences`, standard 14 fonts, Symbol, ZapfDingbats, ToUnicode CMap, Type0/CIDFont with Identity-H encoding; resolves glyph widths from `/Widths`, Standard 14 metrics, CID `/DW`+`/W`, or fallback
 3. `parseCMap(data)` (`cmap.go`) parses ToUnicode CMap streams — handles `beginbfchar`/`endbfchar` and `beginbfrange`/`endbfrange` (sequential and array forms); returns `map[uint16]rune`
 4. `textExtractor` state machine processes operators (BT/ET/Tf/Td/Tm/Tj/TJ/Tz/etc.), tracking text matrix position, font, spacing, and horizontal scaling; advances text matrix by glyph width after each character (PDF spec 9.4.4); splits into single-byte and multi-byte paths for Type0/CIDFont
 5. Fragment collection: `emitRune` collects `textFragment` structs with (x, y, endX, fontName, fontSize); new fragment on font change, Y gap > fontSize×0.5, or X gap > spaceWidth×0.3
