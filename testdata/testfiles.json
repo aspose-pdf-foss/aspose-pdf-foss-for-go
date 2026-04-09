@@ -81,5 +81,11 @@
     ["PdfWithTable.pdf"],
     ["alfa.pdf"],
     ["marketing.pdf"]
+  ],
+
+  "TestExtractImages": [
+    ["marketing.pdf"],
+    ["PdfWithTable.pdf"],
+    ["alfa.pdf"]
   ]
 }
