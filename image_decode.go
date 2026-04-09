@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
 )
 
@@ -141,6 +142,28 @@ func cmykToRGB(pixels []byte, pixelCount int) []byte {
 		rgb[i*3+2] = byte((1 - y) * (1 - k) * 255)
 	}
 	return rgb
+}
+
+// decodeJPEGToPixels decodes JPEG bytes to raw RGB pixel data.
+func decodeJPEGToPixels(data []byte) (pixels []byte, width, height int, err error) {
+	img, err := jpeg.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	bounds := img.Bounds()
+	width = bounds.Dx()
+	height = bounds.Dy()
+	pixels = make([]byte, width*height*3)
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			r, g, b, _ := img.At(bounds.Min.X+x, bounds.Min.Y+y).RGBA()
+			off := (y*width + x) * 3
+			pixels[off] = byte(r >> 8)
+			pixels[off+1] = byte(g >> 8)
+			pixels[off+2] = byte(b >> 8)
+		}
+	}
+	return pixels, width, height, nil
 }
 
 // expandIndexed expands palette-indexed pixel data to the base color space.

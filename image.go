@@ -167,7 +167,32 @@ func extractXObjectImage(objects map[int]*pdfObject, resources pdfDict, name str
 	}
 
 	if filter == "/DCTDecode" {
-		// JPEG passthrough — use raw stream bytes (before decoding).
+		// Check for soft mask — JPEG can't hold alpha, must re-encode as PNG.
+		if smaskVal, ok := stream.Dict["/SMask"]; ok {
+			alphaMask := decodeSoftMask(objects, smaskVal)
+			if alphaMask != nil {
+				jpegData := stream.Data
+				if stream.Decoded {
+					jpegData = getRawStreamData(objects, formVal)
+				}
+				if jpegData == nil {
+					return Image{}, false
+				}
+				pixels, _, _, err := decodeJPEGToPixels(jpegData)
+				if err != nil {
+					return Image{}, false
+				}
+				pngData, err := encodePNG(pixels, width, height, 8, 3, alphaMask)
+				if err != nil {
+					return Image{}, false
+				}
+				img.Data = pngData
+				img.Format = ImageFormatPNG
+				return img, true
+			}
+		}
+
+		// No alpha — JPEG passthrough.
 		img.Data = stream.Data
 		if stream.Decoded {
 			img.Data = getRawStreamData(objects, formVal)

@@ -2,6 +2,9 @@ package asposepdf
 
 import (
 	"bytes"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"image/png"
 	"testing"
 )
@@ -105,6 +108,29 @@ func TestEncodePNGCMYK(t *testing.T) {
 	r, g, b, _ := img.At(0, 0).RGBA()
 	if r>>8 != 255 || g>>8 != 0 || b>>8 != 255 {
 		t.Errorf("magenta → (%d,%d,%d), want (255,0,255)", r>>8, g>>8, b>>8)
+	}
+}
+
+func TestDecodeJPEGToPixels(t *testing.T) {
+	// Create a tiny JPEG in memory.
+	img := image.NewNRGBA(image.Rect(0, 0, 2, 2))
+	img.SetNRGBA(0, 0, color.NRGBA{R: 255, A: 255})
+	img.SetNRGBA(1, 0, color.NRGBA{G: 255, A: 255})
+	img.SetNRGBA(0, 1, color.NRGBA{B: 255, A: 255})
+	img.SetNRGBA(1, 1, color.NRGBA{R: 255, G: 255, B: 255, A: 255})
+
+	var buf bytes.Buffer
+	jpeg.Encode(&buf, img, &jpeg.Options{Quality: 100})
+
+	pixels, w, h, err := decodeJPEGToPixels(buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w != 2 || h != 2 {
+		t.Errorf("size=%dx%d, want 2x2", w, h)
+	}
+	if len(pixels) != 2*2*3 {
+		t.Errorf("pixel count=%d, want %d", len(pixels), 2*2*3)
 	}
 }
 
