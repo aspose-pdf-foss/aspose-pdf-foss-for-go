@@ -196,6 +196,13 @@ func extractXObjectImage(objects map[int]*pdfObject, resources pdfDict, name str
 		bpc = 8
 	}
 
+	// Expand indexed pixels to base color space.
+	if cs == ColorSpaceIndexed {
+		palette, baseComponents := resolveIndexedPalette(objects, stream.Dict)
+		rawPixels = expandIndexed(rawPixels, palette, baseComponents)
+		components = baseComponents
+	}
+
 	// Resolve soft mask for alpha channel.
 	var alphaMask []byte
 	if smaskVal, ok := stream.Dict["/SMask"]; ok {
@@ -344,5 +351,66 @@ func decodeSoftMask(objects map[int]*pdfObject, smaskVal pdfValue) []byte {
 		return nil
 	}
 	return data
+}
+
+// resolveIndexedPalette extracts the palette bytes and base component count
+// from an Indexed color space array: [/Indexed base hival lookup].
+func resolveIndexedPalette(objects map[int]*pdfObject, d pdfDict) ([]byte, int) {
+	csVal, ok := d["/ColorSpace"]
+	if !ok {
+		return nil, 3
+	}
+	csVal = resolveRef(objects, csVal)
+	arr, ok := csVal.(pdfArray)
+	if !ok || len(arr) < 4 {
+		return nil, 3
+	}
+
+	// Base color space (arr[1]).
+	baseComponents := 3
+	switch v := resolveRef(objects, arr[1]).(type) {
+	case pdfName:
+		baseComponents = componentsByCS(colorSpaceFromName(string(v)))
+	case pdfArray:
+		if len(v) > 0 {
+			if n, ok := v[0].(pdfName); ok && string(n) == "/ICCBased" && len(v) > 1 {
+				if s, ok := resolveRef(objects, v[1]).(*pdfStream); ok {
+					baseComponents = dictGetInt(s.Dict, "/N")
+					if baseComponents == 0 {
+						baseComponents = 3
+					}
+				}
+			}
+		}
+	}
+
+	// Lookup table (arr[3]) — string or stream.
+	var palette []byte
+	switch v := resolveRef(objects, arr[3]).(type) {
+	case string:
+		palette = []byte(v)
+	case *pdfStream:
+		if v.Decoded {
+			palette = v.Data
+		} else {
+			decoded, err := decodeStream(v.Dict, v.Data)
+			if err == nil {
+				palette = decoded
+			}
+		}
+	}
+
+	return palette, baseComponents
+}
+
+func componentsByCS(cs ImageColorSpace) int {
+	switch cs {
+	case ColorSpaceDeviceGray:
+		return 1
+	case ColorSpaceDeviceCMYK:
+		return 4
+	default:
+		return 3
+	}
 }
 

@@ -143,3 +143,18 @@ func cmykToRGB(pixels []byte, pixelCount int) []byte {
 	return rgb
 }
 
+// expandIndexed expands palette-indexed pixel data to the base color space.
+// baseComponents is the number of components in the base color space (e.g., 3 for RGB).
+func expandIndexed(indices, palette []byte, baseComponents int) []byte {
+	out := make([]byte, len(indices)*baseComponents)
+	for i, idx := range indices {
+		off := int(idx) * baseComponents
+		for c := 0; c < baseComponents; c++ {
+			if off+c < len(palette) {
+				out[i*baseComponents+c] = palette[off+c]
+			}
+		}
+	}
+	return out
+}
+

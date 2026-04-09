@@ -108,3 +108,18 @@ func TestEncodePNGCMYK(t *testing.T) {
 	}
 }
 
+func TestExpandIndexed(t *testing.T) {
+	palette := []byte{255, 0, 0, 0, 255, 0, 0, 0, 255}
+	indices := []byte{0, 1, 2, 0}
+	rgb := expandIndexed(indices, palette, 3)
+	expected := []byte{255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 0, 0}
+	if len(rgb) != len(expected) {
+		t.Fatalf("len=%d, want %d", len(rgb), len(expected))
+	}
+	for i := range expected {
+		if rgb[i] != expected[i] {
+			t.Errorf("byte[%d]=%d, want %d", i, rgb[i], expected[i])
+		}
+	}
+}
+
