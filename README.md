@@ -199,6 +199,27 @@ page, _ := doc.Page(1)
 images, err := page.ExtractImages()
 ```
 
+```go
+// List image metadata without decoding (fast)
+allInfos, err := doc.ImageInfos()
+for pageIdx, infos := range allInfos {
+    for _, info := range infos {
+        fmt.Printf("page %d: %dx%d %s\n",
+            pageIdx+1, info.Width, info.Height, info.Name)
+    }
+}
+
+// Selectively extract only large images
+for _, infos := range allInfos {
+    for i, info := range infos {
+        if info.Width >= 500 {
+            img, _ := infos[i].Extract()
+            img.Save(fmt.Sprintf("large_%d.png", i))
+        }
+    }
+}
+```
+
 Images are output as JPEG (passthrough for DCTDecode streams) or PNG (everything else). Supported color spaces: DeviceRGB, DeviceGray, DeviceCMYK (converted to RGB), Indexed (palette expansion), and ICCBased. Soft masks are applied as PNG alpha channels.
 
 ### Document API

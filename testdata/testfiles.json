@@ -84,8 +84,12 @@
   ],
 
   "TestExtractImages": [
-    ["marketing.pdf"],
-    ["PdfWithTable.pdf"],
-    ["alfa.pdf"]
+    ["PdfWithImages.pdf"],
+    ["PdfWithImages2.pdf"]
+  ],
+
+  "TestImageInfos": [
+    ["PdfWithImages.pdf"],
+    ["PdfWithImages2.pdf"]
   ]
 }

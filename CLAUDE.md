@@ -69,6 +69,10 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `ImageColorSpace` — ColorSpaceDeviceRGB, ColorSpaceDeviceGray, ColorSpaceDeviceCMYK, ColorSpaceIndexed, ColorSpaceICCBased
 - `(*Image).Save(path) error` — writes the image data to a file
 - `(*Image).WriteTo(w) (int64, error)` — writes the image data to a writer
+- `ImageInfo` struct — Width, Height, BPC, ColorSpace, Format, X, Y, PageWidth, PageHeight, Inline, Name
+- `(*ImageInfo).Extract() (*Image, error)` — decodes the image and returns the full Image with pixel data
+- `(*Page).ImageInfos() ([]ImageInfo, error)` — returns metadata for all images without decoding
+- `(*Document).ImageInfos() ([][]ImageInfo, error)` — returns image metadata for all pages without decoding
 
 **`page_labels.go`** — page label support
 - `(*Page).Label()` — formatted page label from the document's `/PageLabels` number tree; falls back to decimal page number if absent
