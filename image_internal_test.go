@@ -36,9 +36,13 @@ func TestExtractXObjectImageJPEGPassthrough(t *testing.T) {
 	ctm[0] = 200
 	ctm[3] = 160
 
-	img, ok := extractXObjectImage(objects, resources, "/Im0", ctm)
+	info, ok := xobjectImageInfo(objects, resources, "/Im0", ctm)
 	if !ok {
-		t.Fatal("extractXObjectImage returned false for JPEG image")
+		t.Fatal("xobjectImageInfo returned false for JPEG image")
+	}
+	img, err := info.Extract()
+	if err != nil {
+		t.Fatalf("Extract() error: %v", err)
 	}
 	if img.Format != ImageFormatJPEG {
 		t.Errorf("format = %d, want ImageFormatJPEG", img.Format)
@@ -81,7 +85,7 @@ func TestExtractXObjectImageSkipsNonImage(t *testing.T) {
 		},
 	}
 
-	_, ok := extractXObjectImage(objects, resources, "/Fm0", identityMatrix())
+	_, ok := xobjectImageInfo(objects, resources, "/Fm0", identityMatrix())
 	if ok {
 		t.Error("expected false for Form XObject, got true")
 	}
@@ -112,9 +116,13 @@ func TestExtractXObjectImagePNGFlateDecode(t *testing.T) {
 		},
 	}
 
-	img, ok := extractXObjectImage(objects, resources, "/Im0", identityMatrix())
+	info, ok := xobjectImageInfo(objects, resources, "/Im0", identityMatrix())
 	if !ok {
 		t.Fatal("expected true for FlateDecode image, got false")
+	}
+	img, err := info.Extract()
+	if err != nil {
+		t.Fatalf("Extract() error: %v", err)
 	}
 	if img.Format != ImageFormatPNG {
 		t.Errorf("format = %d, want ImageFormatPNG", img.Format)
@@ -253,6 +261,109 @@ func TestImageInfoFlateDecode(t *testing.T) {
 	}
 	if infos[0].Name != "/Im1" {
 		t.Errorf("name = %q, want /Im1", infos[0].Name)
+	}
+}
+
+func TestImageInfoExtract(t *testing.T) {
+	jpegData := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x02, 0xFF, 0xD9}
+
+	imgStream := &pdfStream{
+		Dict: pdfDict{
+			"/Subtype":          pdfName("/Image"),
+			"/Width":            100,
+			"/Height":           80,
+			"/BitsPerComponent": 8,
+			"/ColorSpace":       pdfName("/DeviceRGB"),
+			"/Filter":           pdfName("/DCTDecode"),
+		},
+		Data:    jpegData,
+		Decoded: false,
+	}
+
+	objects := map[int]*pdfObject{
+		1: {Value: imgStream},
+	}
+	resources := pdfDict{
+		"/XObject": pdfDict{
+			"/Im0": pdfRef{Num: 1},
+		},
+	}
+
+	ops := []contentOp{
+		{Operator: "q"},
+		{Operator: "cm", Operands: []pdfValue{200.0, 0.0, 0.0, 160.0, 72.0, 500.0}},
+		{Operator: "Do", Operands: []pdfValue{pdfName("/Im0")}},
+		{Operator: "Q"},
+	}
+
+	infos := collectImageInfos(objects, ops, resources)
+	if len(infos) != 1 {
+		t.Fatalf("got %d infos, want 1", len(infos))
+	}
+
+	img, err := infos[0].Extract()
+	if err != nil {
+		t.Fatalf("Extract() error: %v", err)
+	}
+	if img.Format != ImageFormatJPEG {
+		t.Errorf("format = %d, want ImageFormatJPEG", img.Format)
+	}
+	if len(img.Data) != len(jpegData) {
+		t.Errorf("data len = %d, want %d", len(img.Data), len(jpegData))
+	}
+	if img.Width != 100 || img.Height != 80 {
+		t.Errorf("dimensions = %dx%d, want 100x80", img.Width, img.Height)
+	}
+	if img.X != 72 || img.Y != 500 {
+		t.Errorf("position = (%g, %g), want (72, 500)", img.X, img.Y)
+	}
+}
+
+func TestImageInfoExtractPNG(t *testing.T) {
+	pixels := make([]byte, 10*10*3) // 10x10 RGB
+	imgStream := &pdfStream{
+		Dict: pdfDict{
+			"/Subtype":          pdfName("/Image"),
+			"/Width":            10,
+			"/Height":           10,
+			"/BitsPerComponent": 8,
+			"/ColorSpace":       pdfName("/DeviceRGB"),
+			"/Filter":           pdfName("/FlateDecode"),
+		},
+		Data:    pixels,
+		Decoded: true,
+	}
+
+	objects := map[int]*pdfObject{
+		1: {Value: imgStream},
+	}
+	resources := pdfDict{
+		"/XObject": pdfDict{
+			"/Im0": pdfRef{Num: 1},
+		},
+	}
+
+	ops := []contentOp{
+		{Operator: "Do", Operands: []pdfValue{pdfName("/Im0")}},
+	}
+
+	infos := collectImageInfos(objects, ops, resources)
+	if len(infos) != 1 {
+		t.Fatalf("got %d infos, want 1", len(infos))
+	}
+
+	img, err := infos[0].Extract()
+	if err != nil {
+		t.Fatalf("Extract() error: %v", err)
+	}
+	if img.Format != ImageFormatPNG {
+		t.Errorf("format = %d, want ImageFormatPNG", img.Format)
+	}
+	if len(img.Data) == 0 {
+		t.Error("expected non-empty PNG data")
+	}
+	if img.Width != 10 || img.Height != 10 {
+		t.Errorf("dimensions = %dx%d, want 10x10", img.Width, img.Height)
 	}
 }
 

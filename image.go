@@ -1,6 +1,7 @@
 package asposepdf
 
 import (
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -89,119 +90,47 @@ func (d *Document) ExtractImages() ([][]Image, error) {
 
 // ExtractImages returns all images found on the page.
 func (p *Page) ExtractImages() ([]Image, error) {
-	data, err := p.contentStreams()
+	infos, err := p.ImageInfos()
 	if err != nil {
 		return nil, err
 	}
-	if len(data) == 0 {
-		return nil, nil
-	}
-
-	ops, err := parseContentStream(data)
-	if err != nil {
-		return nil, err
-	}
-
-	resources := p.pageResources()
-	return extractImagesFromOps(p.doc.objects, ops, resources)
-}
-
-// extractImagesFromOps walks content stream ops, tracking CTM, and extracts images.
-func extractImagesFromOps(objects map[int]*pdfObject, ops []contentOp, resources pdfDict) ([]Image, error) {
 	var images []Image
-	ctm := identityMatrix()
-	var ctmStack [][6]float64
-
-	for _, op := range ops {
-		switch op.Operator {
-		case "cm":
-			if len(op.Operands) >= 6 {
-				var m [6]float64
-				for i := 0; i < 6; i++ {
-					m[i] = operandFloat(op.Operands[i])
-				}
-				ctm = matMul(m, ctm)
-			}
-		case "q":
-			ctmStack = append(ctmStack, ctm)
-		case "Q":
-			if len(ctmStack) > 0 {
-				ctm = ctmStack[len(ctmStack)-1]
-				ctmStack = ctmStack[:len(ctmStack)-1]
-			}
-		case "Do":
-			if len(op.Operands) >= 1 {
-				name := operandName(op.Operands[0])
-				// Try as image first.
-				if img, ok := extractXObjectImage(objects, resources, name, ctm); ok {
-					images = append(images, img)
-				} else {
-					// Try as Form XObject — recurse.
-					formImages := extractFormXObjectImages(objects, resources, name, ctm)
-					images = append(images, formImages...)
-				}
-			}
-		case "BI":
-			if len(op.Operands) >= 2 {
-				if img, ok := extractInlineImage(op.Operands[0], op.Operands[1], ctm); ok {
-					images = append(images, img)
-				}
-			}
+	for i := range infos {
+		img, err := infos[i].Extract()
+		if err != nil {
+			continue // skip undecodable images, same as current behavior
 		}
+		images = append(images, *img)
 	}
 	return images, nil
 }
 
-// extractXObjectImage extracts an image from an XObject reference.
-// Returns false if the XObject is not an image or can't be decoded.
-func extractXObjectImage(objects map[int]*pdfObject, resources pdfDict, name string, ctm [6]float64) (Image, bool) {
-	if name == "" || resources == nil {
-		return Image{}, false
-	}
-	xobjVal, ok := resources["/XObject"]
-	if !ok {
-		return Image{}, false
-	}
-	xobjDict, ok := resolveRefToDict(objects, xobjVal)
-	if !ok {
-		return Image{}, false
-	}
-	formVal, ok := xobjDict[name]
-	if !ok {
-		return Image{}, false
-	}
-	resolved := resolveRef(objects, formVal)
-	stream, ok := resolved.(*pdfStream)
-	if !ok {
-		return Image{}, false
-	}
-	if dictGetName(stream.Dict, "/Subtype") != "/Image" {
-		return Image{}, false
+// Extract decodes the image and returns the full Image with pixel data.
+func (info *ImageInfo) Extract() (*Image, error) {
+	img := &Image{
+		Width:      info.Width,
+		Height:     info.Height,
+		BPC:        info.BPC,
+		ColorSpace: info.ColorSpace,
+		Format:     info.Format,
+		X:          info.X,
+		Y:          info.Y,
+		PageWidth:  info.PageWidth,
+		PageHeight: info.PageHeight,
+		Inline:     info.Inline,
 	}
 
-	width := dictGetInt(stream.Dict, "/Width")
-	height := dictGetInt(stream.Dict, "/Height")
-	bpc := dictGetInt(stream.Dict, "/BitsPerComponent")
-	if width <= 0 || height <= 0 {
-		return Image{}, false
+	if info.Inline {
+		return extractInlineImageData(img, info.dict, info.rawData)
 	}
+	return extractXObjectImageData(img, info.objects, info.stream, info.formVal)
+}
 
-	cs := resolveColorSpace(objects, stream.Dict)
+// extractXObjectImageData decodes an XObject image stream into the provided Image.
+func extractXObjectImageData(img *Image, objects map[int]*pdfObject, stream *pdfStream, formVal pdfValue) (*Image, error) {
 	filter := primaryFilter(stream.Dict)
 
-	img := Image{
-		Width:      width,
-		Height:     height,
-		BPC:        bpc,
-		ColorSpace: cs,
-		X:          ctm[4],
-		Y:          ctm[5],
-		PageWidth:  math.Sqrt(ctm[0]*ctm[0] + ctm[1]*ctm[1]),
-		PageHeight: math.Sqrt(ctm[2]*ctm[2] + ctm[3]*ctm[3]),
-	}
-
 	if filter == "/DCTDecode" {
-		// Check for soft mask — JPEG can't hold alpha, must re-encode as PNG.
 		if smaskVal, ok := stream.Dict["/SMask"]; ok {
 			alphaMask := decodeSoftMask(objects, smaskVal)
 			if alphaMask != nil {
@@ -210,35 +139,33 @@ func extractXObjectImage(objects map[int]*pdfObject, resources pdfDict, name str
 					jpegData = getRawStreamData(objects, formVal)
 				}
 				if jpegData == nil {
-					return Image{}, false
+					return nil, fmt.Errorf("cannot read JPEG data for re-encoding")
 				}
 				pixels, _, _, err := decodeJPEGToPixels(jpegData)
 				if err != nil {
-					return Image{}, false
+					return nil, err
 				}
-				pngData, err := encodePNG(pixels, width, height, 8, 3, alphaMask)
+				pngData, err := encodePNG(pixels, img.Width, img.Height, 8, 3, alphaMask)
 				if err != nil {
-					return Image{}, false
+					return nil, err
 				}
 				img.Data = pngData
 				img.Format = ImageFormatPNG
-				return img, true
+				return img, nil
 			}
 		}
 
-		// No alpha — JPEG passthrough.
 		img.Data = stream.Data
 		if stream.Decoded {
 			img.Data = getRawStreamData(objects, formVal)
 			if img.Data == nil {
-				return Image{}, false
+				return nil, fmt.Errorf("cannot read raw JPEG data")
 			}
 		}
 		img.Format = ImageFormatJPEG
-		return img, true
+		return img, nil
 	}
 
-	// Decode pixels and encode as PNG.
 	var rawPixels []byte
 	if stream.Decoded {
 		rawPixels = stream.Data
@@ -246,36 +173,69 @@ func extractXObjectImage(objects map[int]*pdfObject, resources pdfDict, name str
 		var err error
 		rawPixels, err = decodeStream(stream.Dict, stream.Data)
 		if err != nil {
-			return Image{}, false
+			return nil, err
 		}
 	}
 
-	components := colorSpaceComponents(objects, stream.Dict, cs)
+	bpc := img.BPC
+	components := colorSpaceComponents(objects, stream.Dict, img.ColorSpace)
 	if bpc == 0 {
 		bpc = 8
 	}
 
-	// Expand indexed pixels to base color space.
-	if cs == ColorSpaceIndexed {
+	if img.ColorSpace == ColorSpaceIndexed {
 		palette, baseComponents := resolveIndexedPalette(objects, stream.Dict)
 		rawPixels = expandIndexed(rawPixels, palette, baseComponents)
 		components = baseComponents
 	}
 
-	// Resolve soft mask for alpha channel.
 	var alphaMask []byte
 	if smaskVal, ok := stream.Dict["/SMask"]; ok {
 		alphaMask = decodeSoftMask(objects, smaskVal)
 	}
 
-	pngData, err := encodePNG(rawPixels, width, height, bpc, components, alphaMask)
+	pngData, err := encodePNG(rawPixels, img.Width, img.Height, bpc, components, alphaMask)
 	if err != nil {
-		return Image{}, false
+		return nil, err
 	}
 
 	img.Data = pngData
 	img.Format = ImageFormatPNG
-	return img, true
+	return img, nil
+}
+
+// extractInlineImageData decodes an inline image into the provided Image.
+func extractInlineImageData(img *Image, dict pdfDict, rawData []byte) (*Image, error) {
+	filter := primaryFilter(dict)
+	data := rawData
+
+	if filter == "/DCTDecode" {
+		img.Data = data
+		img.Format = ImageFormatJPEG
+		return img, nil
+	}
+
+	if filter != "" {
+		var err error
+		data, err = applyFilter(filter, data)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	components := componentsByCS(img.ColorSpace)
+	bpc := img.BPC
+	if bpc == 0 {
+		bpc = 8
+	}
+
+	pngData, err := encodePNG(data, img.Width, img.Height, bpc, components, nil)
+	if err != nil {
+		return nil, err
+	}
+	img.Data = pngData
+	img.Format = ImageFormatPNG
+	return img, nil
 }
 
 // primaryFilter returns the first filter name, or "" if none.
@@ -473,139 +433,6 @@ func componentsByCS(cs ImageColorSpace) int {
 	}
 }
 
-// extractInlineImage builds an Image from parsed inline image operands.
-func extractInlineImage(dictVal, dataVal pdfValue, ctm [6]float64) (Image, bool) {
-	dict, ok := dictVal.(pdfDict)
-	if !ok {
-		return Image{}, false
-	}
-	rawData, ok := dataVal.(string)
-	if !ok {
-		return Image{}, false
-	}
-
-	width := dictGetInt(dict, "/Width")
-	height := dictGetInt(dict, "/Height")
-	bpc := dictGetInt(dict, "/BitsPerComponent")
-	if width <= 0 || height <= 0 {
-		return Image{}, false
-	}
-	if bpc == 0 {
-		bpc = 8
-	}
-
-	cs := resolveColorSpaceInline(dict)
-	filter := primaryFilter(dict)
-
-	img := Image{
-		Width:      width,
-		Height:     height,
-		BPC:        bpc,
-		ColorSpace: cs,
-		X:          ctm[4],
-		Y:          ctm[5],
-		PageWidth:  math.Sqrt(ctm[0]*ctm[0] + ctm[1]*ctm[1]),
-		PageHeight: math.Sqrt(ctm[2]*ctm[2] + ctm[3]*ctm[3]),
-		Inline:     true,
-	}
-
-	data := []byte(rawData)
-
-	if filter == "/DCTDecode" {
-		img.Data = data
-		img.Format = ImageFormatJPEG
-		return img, true
-	}
-
-	// Decode filters.
-	if filter != "" {
-		var err error
-		data, err = applyFilter(filter, data)
-		if err != nil {
-			return Image{}, false
-		}
-	}
-
-	components := componentsByCS(cs)
-	pngData, err := encodePNG(data, width, height, bpc, components, nil)
-	if err != nil {
-		return Image{}, false
-	}
-	img.Data = pngData
-	img.Format = ImageFormatPNG
-	return img, true
-}
-
-// extractFormXObjectImages extracts images from a Form XObject's content stream.
-func extractFormXObjectImages(objects map[int]*pdfObject, resources pdfDict, name string, ctm [6]float64) []Image {
-	if name == "" || resources == nil {
-		return nil
-	}
-	xobjVal, ok := resources["/XObject"]
-	if !ok {
-		return nil
-	}
-	xobjDict, ok := resolveRefToDict(objects, xobjVal)
-	if !ok {
-		return nil
-	}
-	formVal, ok := xobjDict[name]
-	if !ok {
-		return nil
-	}
-	resolved := resolveRef(objects, formVal)
-	stream, ok := resolved.(*pdfStream)
-	if !ok {
-		return nil
-	}
-	if dictGetName(stream.Dict, "/Subtype") != "/Form" {
-		return nil
-	}
-
-	var data []byte
-	if stream.Decoded {
-		data = stream.Data
-	} else {
-		var err error
-		data, err = decodeStream(stream.Dict, stream.Data)
-		if err != nil {
-			return nil
-		}
-	}
-
-	ops, err := parseContentStream(data)
-	if err != nil {
-		return nil
-	}
-
-	// Apply Form's /Matrix to CTM.
-	formCTM := ctm
-	if matVal, ok := stream.Dict["/Matrix"]; ok {
-		if arr, ok := matVal.(pdfArray); ok && len(arr) == 6 {
-			var fm [6]float64
-			for i := 0; i < 6; i++ {
-				fm[i] = operandFloat(arr[i])
-			}
-			formCTM = matMul(fm, ctm)
-		}
-	}
-
-	// Use form's resources, falling back to parent.
-	formResources := resources
-	if resVal, ok := stream.Dict["/Resources"]; ok {
-		if rd, ok := resolveRefToDict(objects, resVal); ok {
-			formResources = rd
-		}
-	}
-
-	images, _ := extractImagesFromOps(objects, ops, formResources)
-	// Offset positions by the form's translation.
-	for i := range images {
-		images[i].X += formCTM[4]
-		images[i].Y += formCTM[5]
-	}
-	return images
-}
 
 // resolveColorSpaceInline resolves color space from an inline image dict.
 func resolveColorSpaceInline(dict pdfDict) ImageColorSpace {
