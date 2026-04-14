@@ -2,6 +2,9 @@ package asposepdf
 
 import (
 	"bytes"
+	"image"
+	"image/color"
+	"image/png"
 	"testing"
 )
 
@@ -83,4 +86,117 @@ func TestParseJPEGHeaderGray(t *testing.T) {
 	if info.components != 1 {
 		t.Errorf("components = %d, want 1", info.components)
 	}
+}
+
+func TestCreateJPEGXObject(t *testing.T) {
+	// Minimal JPEG with SOF0: 100x80, 3 components.
+	jpegData := []byte{
+		0xFF, 0xD8,
+		0xFF, 0xC0, 0x00, 0x0B, 0x08,
+		0x00, 0x50, 0x00, 0x64, 0x03,
+		0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
+		0xFF, 0xD9,
+	}
+
+	stream, smask, err := createImageXObject(jpegData, ImageFormatJPEG)
+	if err != nil {
+		t.Fatalf("createImageXObject: %v", err)
+	}
+	if smask != nil {
+		t.Error("expected nil smask for JPEG")
+	}
+	if dictGetName(stream.Dict, "/Subtype") != "/Image" {
+		t.Error("expected /Subtype /Image")
+	}
+	if dictGetName(stream.Dict, "/Filter") != "/DCTDecode" {
+		t.Error("expected /Filter /DCTDecode")
+	}
+	if dictGetInt(stream.Dict, "/Width") != 100 {
+		t.Errorf("width = %d, want 100", dictGetInt(stream.Dict, "/Width"))
+	}
+	if dictGetInt(stream.Dict, "/Height") != 80 {
+		t.Errorf("height = %d, want 80", dictGetInt(stream.Dict, "/Height"))
+	}
+	if stream.Decoded {
+		t.Error("JPEG stream should have Decoded=false")
+	}
+	if !bytes.Equal(stream.Data, jpegData) {
+		t.Error("JPEG data should be stored as-is")
+	}
+}
+
+func TestCreatePNGXObject(t *testing.T) {
+	pngData := createTestPNG(2, 2, false)
+	stream, smask, err := createImageXObject(pngData, ImageFormatPNG)
+	if err != nil {
+		t.Fatalf("createImageXObject: %v", err)
+	}
+	if smask != nil {
+		t.Error("expected nil smask for opaque PNG")
+	}
+	if dictGetName(stream.Dict, "/Subtype") != "/Image" {
+		t.Error("expected /Subtype /Image")
+	}
+	if dictGetInt(stream.Dict, "/Width") != 2 {
+		t.Errorf("width = %d, want 2", dictGetInt(stream.Dict, "/Width"))
+	}
+	if dictGetInt(stream.Dict, "/Height") != 2 {
+		t.Errorf("height = %d, want 2", dictGetInt(stream.Dict, "/Height"))
+	}
+	if !stream.Decoded {
+		t.Error("PNG stream should have Decoded=true")
+	}
+	// 2x2 RGB = 12 bytes of pixel data.
+	if len(stream.Data) != 12 {
+		t.Errorf("data len = %d, want 12", len(stream.Data))
+	}
+}
+
+func TestCreatePNGXObjectWithAlpha(t *testing.T) {
+	pngData := createTestPNG(2, 2, true)
+	stream, smask, err := createImageXObject(pngData, ImageFormatPNG)
+	if err != nil {
+		t.Fatalf("createImageXObject: %v", err)
+	}
+	if stream == nil {
+		t.Fatal("expected non-nil stream")
+	}
+	if smask == nil {
+		t.Fatal("expected non-nil smask for RGBA PNG")
+	}
+	if dictGetName(smask.Dict, "/Subtype") != "/Image" {
+		t.Error("smask should be /Image")
+	}
+	if dictGetName(smask.Dict, "/ColorSpace") != "/DeviceGray" {
+		t.Error("smask should be DeviceGray")
+	}
+	if dictGetInt(smask.Dict, "/Width") != 2 || dictGetInt(smask.Dict, "/Height") != 2 {
+		t.Error("smask dimensions should match image")
+	}
+	if len(smask.Data) != 4 {
+		t.Errorf("smask data len = %d, want 4", len(smask.Data))
+	}
+}
+
+// createTestPNG generates a minimal PNG file as bytes.
+func createTestPNG(w, h int, withAlpha bool) []byte {
+	var buf bytes.Buffer
+	if withAlpha {
+		img := image.NewNRGBA(image.Rect(0, 0, w, h))
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				img.SetNRGBA(x, y, color.NRGBA{R: 255, G: 0, B: 0, A: 128})
+			}
+		}
+		png.Encode(&buf, img)
+	} else {
+		img := image.NewNRGBA(image.Rect(0, 0, w, h))
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				img.SetNRGBA(x, y, color.NRGBA{R: 0, G: 128, B: 255, A: 255})
+			}
+		}
+		png.Encode(&buf, img)
+	}
+	return buf.Bytes()
 }
