@@ -36,6 +36,8 @@ merged.Save("merged.pdf")
 - **Image extraction** — extract images as JPEG (passthrough) or PNG with position, dimensions, and color space metadata; supports DeviceRGB, DeviceGray, DeviceCMYK, Indexed, ICCBased color spaces, soft masks (alpha), inline images, and Form XObjects
 - **Add images** — place JPEG or PNG images onto existing pages with precise positioning via PDF rectangles
 - **Image to PDF** — convert standalone images to single-page PDFs with DPI-aware sizing, configurable page dimensions and margins
+- **Replace images** — swap image data on existing pages while preserving position and size
+- **Remove images** — delete images from pages, cleaning up resources and content stream operators
 - **Stream input** — open PDFs from any `io.Reader`, not just file paths
 
 ## API Reference
@@ -259,6 +261,27 @@ doc, _ = pdf.ImageToDocument("logo.png", pdf.ImageToDocumentOptions{
     MarginBottom: 72,
 })
 doc.Save("logo_a4.pdf")
+```
+
+### Replacing and Removing Images
+
+```go
+doc, _ := pdf.Open("input.pdf")
+page, _ := doc.Page(1)
+infos, _ := page.ImageInfos()
+
+// Replace first image with a new one
+infos[0].Replace("new_logo.jpg")
+
+// Replace from stream
+f, _ := os.Open("photo.png")
+infos[1].ReplaceFromStream(f)
+f.Close()
+
+// Remove an image
+infos[2].Remove()
+
+doc.Save("output.pdf")
 ```
 
 ### Document API

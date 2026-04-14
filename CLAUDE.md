@@ -73,6 +73,9 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `(*ImageInfo).Extract() (*Image, error)` — decodes the image and returns the full Image with pixel data
 - `(*Page).ImageInfos() ([]ImageInfo, error)` — returns metadata for all images without decoding
 - `(*Document).ImageInfos() ([][]ImageInfo, error)` — returns image metadata for all pages without decoding
+- `(*ImageInfo).Replace(path) error` — replaces image data from a file; format detected by magic bytes (JPEG, PNG); position unchanged
+- `(*ImageInfo).ReplaceFromStream(r) error` — replaces image data from an io.Reader
+- `(*ImageInfo).Remove() error` — removes image from page (resources + content stream); XObject stays in doc objects
 - `Rectangle` struct — LLX, LLY, URX, URY (PDF rectangle in points)
 - `(*Page).AddImage(path, rect) error` — adds an image from a file to the page; format detected by magic bytes (JPEG, PNG)
 - `(*Page).AddImageFromStream(r, rect) error` — adds an image from an io.Reader to the page
