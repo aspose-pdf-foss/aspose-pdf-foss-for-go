@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"strconv"
-	"strings"
 )
 
 // serializeContentOps converts parsed operators back to content stream bytes.
@@ -36,10 +35,7 @@ func serializeOperand(buf *bytes.Buffer, v pdfValue) {
 	case int:
 		buf.WriteString(strconv.Itoa(val))
 	case float64:
-		s := strconv.FormatFloat(val, 'f', 4, 64)
-		s = strings.TrimRight(s, "0")
-		s = strings.TrimRight(s, ".")
-		buf.WriteString(s)
+		buf.WriteString(formatFloat(val))
 	case pdfName:
 		buf.WriteString(string(val))
 	case string:
@@ -79,7 +75,10 @@ func serializeOperand(buf *bytes.Buffer, v pdfValue) {
 
 // Remove removes the image from the page.
 // Deletes the XObject reference from page resources and the drawing
-// operators from the content stream.
+// operators from the content stream. The underlying XObject remains
+// in the document's object store (safe for shared references).
+// Images inside Form XObjects are not supported; only page-level images
+// can be removed.
 func (info *ImageInfo) Remove() error {
 	if info.page == nil || info.stream == nil {
 		return fmt.Errorf("image info: no image data")
@@ -128,6 +127,9 @@ func (info *ImageInfo) Remove() error {
 }
 
 // removeImageOps removes the q...Do...Q block containing a Do for the given image name.
+// Note: the entire enclosing q/Q block is removed. If other operators share the same
+// block, they are removed too. This matches typical PDF structure where each image
+// draw is wrapped in its own q/Q pair.
 func removeImageOps(ops []contentOp, name string) []contentOp {
 	// Find all Do operators for this name.
 	var doIndices []int
