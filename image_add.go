@@ -90,9 +90,13 @@ func createPNGXObject(data []byte) (*pdfStream, *pdfStream, error) {
 			for x := 0; x < w; x++ {
 				c := src.RGBAAt(x+bounds.Min.X, y+bounds.Min.Y)
 				off := (y*w + x) * 3
-				pixels[off] = c.R
-				pixels[off+1] = c.G
-				pixels[off+2] = c.B
+				// Un-premultiply alpha: RGBA stores premultiplied values,
+				// but PDF expects straight (non-premultiplied) color + separate SMask.
+				if c.A > 0 {
+					pixels[off] = uint8(uint16(c.R) * 255 / uint16(c.A))
+					pixels[off+1] = uint8(uint16(c.G) * 255 / uint16(c.A))
+					pixels[off+2] = uint8(uint16(c.B) * 255 / uint16(c.A))
+				}
 				alpha[y*w+x] = c.A
 			}
 		}
@@ -300,12 +304,13 @@ func (p *Page) addImageFromBytes(data []byte, rect Rectangle) error {
 		return fmt.Errorf("add image: page has no dict")
 	}
 
-	resources, _ := pageDict["/Resources"].(pdfDict)
+	resources := p.pageResources()
 	if resources == nil {
 		resources = pdfDict{}
 		pageDict["/Resources"] = resources
 	}
-	xobjDict, _ := resources["/XObject"].(pdfDict)
+	xobjVal := resolveRef(p.doc.objects, resources["/XObject"])
+	xobjDict, _ := xobjVal.(pdfDict)
 	if xobjDict == nil {
 		xobjDict = pdfDict{}
 		resources["/XObject"] = xobjDict
