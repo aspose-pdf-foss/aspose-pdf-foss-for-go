@@ -41,6 +41,7 @@ merged.Save("merged.pdf")
 - **Remove unused objects** — clean up orphaned objects after modifications to reduce file size
 - **Optimize images** — reduce file size by downscaling images above a target DPI and converting opaque PNGs to JPEG
 - **Create blank documents** — create single-page blank PDFs with custom dimensions or predefined page formats (A4, Letter, Legal, A3)
+- **Add blank pages** — append or insert blank pages into existing documents at any position
 - **Stream input** — open PDFs from any `io.Reader`, not just file paths
 
 ## API Reference
@@ -327,6 +328,20 @@ doc.Save("a4.pdf")
 // Landscape orientation
 doc := pdf.NewDocumentFromFormat(pdf.PageFormatA4.Landscape())
 doc.Save("a4_landscape.pdf")
+```
+
+### Adding Blank Pages
+
+```go
+doc, _ := pdf.Open("input.pdf")
+
+// Append a blank A4 page
+doc.AddBlankPageFromFormat(pdf.PageFormatA4)
+
+// Insert a landscape Letter page at position 2
+doc.InsertBlankPageFromFormat(2, pdf.PageFormatLetter.Landscape())
+
+doc.Save("output.pdf")
 ```
 
 ### Document API

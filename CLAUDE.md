@@ -89,6 +89,10 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `(PageFormat).Landscape()` — returns the format with width and height swapped
 - `NewDocument(width, height) *Document` — creates a single-page blank document with given dimensions
 - `NewDocumentFromFormat(format) *Document` — creates a single-page blank document from a predefined page format
+- `(*Document).AddBlankPage(width, height) error` — appends a blank page with given dimensions
+- `(*Document).AddBlankPageFromFormat(format) error` — appends a blank page from a page format
+- `(*Document).InsertBlankPage(position, width, height) error` — inserts a blank page at a 1-based position
+- `(*Document).InsertBlankPageFromFormat(position, format) error` — inserts a blank page from a page format at a position
 
 **`page_labels.go`** — page label support
 - `(*Page).Label()` — formatted page label from the document's `/PageLabels` number tree; falls back to decimal page number if absent
