@@ -305,3 +305,67 @@ func TestDocumentInvalidExtract(t *testing.T) {
 		t.Fatal("expected error for from > to")
 	}
 }
+
+func TestRemoveUnusedObjectsRoundTrip(t *testing.T) {
+	doc, err := asposepdf.Open("testdata/PdfWithImages.pdf")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+
+	page, _ := doc.Page(1)
+	infos, err := page.ImageInfos()
+	if err != nil {
+		t.Fatalf("ImageInfos: %v", err)
+	}
+	if len(infos) == 0 {
+		t.Fatal("expected at least 1 image")
+	}
+
+	// Remove all images from page 1.
+	for _, info := range infos {
+		if err := info.Remove(); err != nil {
+			t.Fatalf("Remove: %v", err)
+		}
+	}
+
+	removed := doc.RemoveUnusedObjects()
+	t.Logf("removed %d unused objects", removed)
+	if removed < 1 {
+		t.Error("expected at least 1 object removed after image removal")
+	}
+
+	outDir := filepath.Join("result_files", "TestRemoveUnusedObjectsRoundTrip")
+	os.MkdirAll(outDir, 0o755)
+	outPath := filepath.Join(outDir, "output.pdf")
+	if err := doc.Save(outPath); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// Validate the output.
+	report, err := asposepdf.Validate(outPath)
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if !report.Valid {
+		for _, issue := range report.Issues {
+			t.Errorf("validation issue: [%s] %s", issue.Code, issue.Message)
+		}
+	}
+
+	// Verify file size decreased compared to saving without cleanup.
+	docNoCleanup, _ := asposepdf.Open("testdata/PdfWithImages.pdf")
+	page2, _ := docNoCleanup.Page(1)
+	infos2, _ := page2.ImageInfos()
+	for _, info := range infos2 {
+		info.Remove()
+	}
+	noCleanupPath := filepath.Join(outDir, "no_cleanup.pdf")
+	docNoCleanup.Save(noCleanupPath)
+
+	cleanupInfo, _ := os.Stat(outPath)
+	noCleanupInfo, _ := os.Stat(noCleanupPath)
+	t.Logf("with cleanup: %d bytes, without: %d bytes", cleanupInfo.Size(), noCleanupInfo.Size())
+	if cleanupInfo.Size() >= noCleanupInfo.Size() {
+		t.Error("expected smaller file size after RemoveUnusedObjects")
+	}
+}

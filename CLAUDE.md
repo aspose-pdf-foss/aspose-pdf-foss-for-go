@@ -82,6 +82,7 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `ImageToDocument(path, opts...) (*Document, error)` — creates a single-page PDF from an image file; DPI-aware page sizing
 - `ImageToDocumentFromStream(r, opts...) (*Document, error)` — creates a single-page PDF from an image reader
 - `ImageToDocumentOptions` struct — PageWidth, PageHeight, MarginLeft, MarginRight, MarginTop, MarginBottom
+- `(*Document).RemoveUnusedObjects() int` — removes objects not reachable from any page; returns count of removed objects
 
 **`page_labels.go`** — page label support
 - `(*Page).Label()` — formatted page label from the document's `/PageLabels` number tree; falls back to decimal page number if absent

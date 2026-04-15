@@ -38,6 +38,7 @@ merged.Save("merged.pdf")
 - **Image to PDF** — convert standalone images to single-page PDFs with DPI-aware sizing, configurable page dimensions and margins
 - **Replace images** — swap image data on existing pages while preserving position and size
 - **Remove images** — delete images from pages, cleaning up resources and content stream operators
+- **Remove unused objects** — clean up orphaned objects after modifications to reduce file size
 - **Stream input** — open PDFs from any `io.Reader`, not just file paths
 
 ## API Reference
@@ -282,6 +283,19 @@ f.Close()
 infos[2].Remove()
 
 doc.Save("output.pdf")
+```
+
+### Cleaning Up Unused Objects
+
+```go
+doc, _ := pdf.Open("input.pdf")
+page, _ := doc.Page(1)
+infos, _ := page.ImageInfos()
+infos[0].Remove()
+
+removed := doc.RemoveUnusedObjects()
+fmt.Printf("removed %d unused objects\n", removed)
+doc.Save("output.pdf") // smaller file
 ```
 
 ### Document API
