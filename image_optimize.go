@@ -261,6 +261,10 @@ func optimizeImage(info *ImageInfo, opts OptimizeImageOptions, quality int) bool
 	stream.Dict["/Width"] = newWidth
 	stream.Dict["/Height"] = newHeight
 	stream.Dict["/BitsPerComponent"] = 8
+	if isJPEG || needsPNGToJPEG {
+		// downscaleImage always produces NRGBA (RGB); JPEG encodes as RGB.
+		stream.Dict["/ColorSpace"] = pdfName("/DeviceRGB")
+	}
 	delete(stream.Dict, "/DecodeParms")
 
 	return true
