@@ -146,6 +146,21 @@ func (d *Document) Append(others ...*Document) {
 	}
 }
 
+// RemoveUnusedObjects removes objects from the document that are not
+// reachable from any page. Returns the number of objects removed.
+func (d *Document) RemoveUnusedObjects() int {
+	reachable := collectReachableIDs(d.objects, d.pages)
+
+	removed := 0
+	for id := range d.objects {
+		if !reachable[id] {
+			delete(d.objects, id)
+			removed++
+		}
+	}
+	return removed
+}
+
 // SetPassword configures the document to be encrypted when saved.
 // userPassword is required to open; ownerPassword controls permissions.
 // If ownerPassword is empty, it defaults to userPassword.
