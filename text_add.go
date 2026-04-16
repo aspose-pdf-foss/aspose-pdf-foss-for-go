@@ -1,6 +1,7 @@
 package asposepdf
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -126,4 +127,304 @@ func escapeStringPDF(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// isValidFont returns true if f is one of the 14 standard font constants.
+func isValidFont(f Font) bool {
+	return f >= FontHelvetica && f <= FontZapfDingbats
+}
+
+// AddText draws text inside the rectangle using the given style.
+// Text is wrapped at word boundaries to fit the rectangle width.
+// Content exceeding the rectangle height is clipped.
+func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
+	if text == "" {
+		return nil
+	}
+	if err := rect.validate(); err != nil {
+		return fmt.Errorf("add text: %w", err)
+	}
+	if style.Size < 0 {
+		return fmt.Errorf("add text: font size must be non-negative, got %g", style.Size)
+	}
+	if !isValidFont(style.Font) {
+		return fmt.Errorf("add text: invalid font constant %d", style.Font)
+	}
+
+	// Apply defaults.
+	fontSize := style.Size
+	if fontSize == 0 {
+		fontSize = 12
+	}
+	lineSpacing := style.LineSpacing
+	if lineSpacing == 0 {
+		lineSpacing = 1.2
+	}
+	textColor := Color{R: 0, G: 0, B: 0, A: 1}
+	if style.Color != nil {
+		textColor = *style.Color
+	}
+
+	// Get font metrics.
+	pdfFontName := fontPDFName(style.Font)
+	widths, _ := standard14Widths(pdfFontName)
+
+	// Word wrap.
+	rectWidth := rect.URX - rect.LLX
+	rectHeight := rect.URY - rect.LLY
+	lines := wrapText(text, widths, fontSize, rectWidth)
+	if len(lines) == 0 {
+		return nil
+	}
+
+	// Line height and total text height.
+	lineHeight := fontSize * lineSpacing
+	totalTextHeight := float64(len(lines)) * lineHeight
+
+	// Vertical start position (top of first line, in PDF coordinates).
+	var startY float64
+	switch style.VAlign {
+	case VAlignMiddle:
+		startY = rect.URY - (rectHeight-totalTextHeight)/2
+	case VAlignBottom:
+		startY = rect.LLY + totalTextHeight
+	default: // VAlignTop
+		startY = rect.URY
+	}
+
+	// Register font resource.
+	fontResName, err := p.ensureFontResource(pdfFontName)
+	if err != nil {
+		return err
+	}
+
+	// Register ExtGState resources if needed.
+	var textGSName, bgGSName string
+	if textColor.A < 1 {
+		name, err := p.ensureExtGState(textColor.A)
+		if err != nil {
+			return err
+		}
+		textGSName = name
+	}
+	if style.Background != nil && style.Background.A > 0 && style.Background.A < 1 {
+		name, err := p.ensureExtGState(style.Background.A)
+		if err != nil {
+			return err
+		}
+		bgGSName = name
+	}
+
+	// Build content stream operators.
+	var buf strings.Builder
+
+	// Save state + clipping path.
+	buf.WriteString("\nq\n")
+	buf.WriteString(fmt.Sprintf("%s %s %s %s re W n\n",
+		formatFloat(rect.LLX), formatFloat(rect.LLY),
+		formatFloat(rectWidth), formatFloat(rectHeight)))
+
+	// Background fill.
+	if style.Background != nil && style.Background.A > 0 {
+		if bgGSName != "" {
+			buf.WriteString(fmt.Sprintf("%s gs\n", bgGSName))
+		}
+		buf.WriteString(fmt.Sprintf("%s %s %s rg\n",
+			formatFloat(style.Background.R), formatFloat(style.Background.G), formatFloat(style.Background.B)))
+		buf.WriteString(fmt.Sprintf("%s %s %s %s re f\n",
+			formatFloat(rect.LLX), formatFloat(rect.LLY),
+			formatFloat(rectWidth), formatFloat(rectHeight)))
+	}
+
+	// Text opacity.
+	if textGSName != "" {
+		buf.WriteString(fmt.Sprintf("%s gs\n", textGSName))
+	}
+
+	// Text block.
+	buf.WriteString("BT\n")
+	buf.WriteString(fmt.Sprintf("%s %s Tf\n", fontResName, formatFloat(fontSize)))
+	buf.WriteString(fmt.Sprintf("%s %s %s rg\n",
+		formatFloat(textColor.R), formatFloat(textColor.G), formatFloat(textColor.B)))
+
+	// Track positions for underline/strikethrough.
+	type linePos struct {
+		x, y, width float64
+	}
+	var linePositions []linePos
+
+	for i, line := range lines {
+		if line == "" {
+			continue
+		}
+		lineWidth := measureString(line, widths, fontSize)
+
+		// Horizontal alignment.
+		var x float64
+		switch style.HAlign {
+		case HAlignCenter:
+			x = rect.LLX + (rectWidth-lineWidth)/2
+		case HAlignRight:
+			x = rect.LLX + (rectWidth - lineWidth)
+		default: // HAlignLeft
+			x = rect.LLX
+		}
+
+		// Baseline Y: top of line area minus ascent.
+		ascent := 0.8 * fontSize
+		y := startY - float64(i)*lineHeight - ascent
+
+		if i == 0 {
+			buf.WriteString(fmt.Sprintf("%s %s Td\n", formatFloat(x), formatFloat(y)))
+		} else {
+			prevX := linePositions[len(linePositions)-1].x
+			prevY := linePositions[len(linePositions)-1].y
+			buf.WriteString(fmt.Sprintf("%s %s Td\n", formatFloat(x-prevX), formatFloat(y-prevY)))
+		}
+
+		buf.WriteString(fmt.Sprintf("(%s) Tj\n", escapeStringPDF(line)))
+		linePositions = append(linePositions, linePos{x: x, y: y, width: lineWidth})
+	}
+
+	buf.WriteString("ET\n")
+
+	// Underline.
+	if style.Underline && len(linePositions) > 0 {
+		buf.WriteString(fmt.Sprintf("%s %s %s rg\n",
+			formatFloat(textColor.R), formatFloat(textColor.G), formatFloat(textColor.B)))
+		thickness := fontSize * 0.05
+		for _, lp := range linePositions {
+			ulY := lp.y - fontSize*0.1
+			buf.WriteString(fmt.Sprintf("%s %s %s %s re f\n",
+				formatFloat(lp.x), formatFloat(ulY),
+				formatFloat(lp.width), formatFloat(thickness)))
+		}
+	}
+
+	// Strikethrough.
+	if style.Strikethrough && len(linePositions) > 0 {
+		buf.WriteString(fmt.Sprintf("%s %s %s rg\n",
+			formatFloat(textColor.R), formatFloat(textColor.G), formatFloat(textColor.B)))
+		thickness := fontSize * 0.05
+		for _, lp := range linePositions {
+			stY := lp.y + fontSize*0.3
+			buf.WriteString(fmt.Sprintf("%s %s %s %s re f\n",
+				formatFloat(lp.x), formatFloat(stY),
+				formatFloat(lp.width), formatFloat(thickness)))
+		}
+	}
+
+	// Restore state.
+	buf.WriteString("Q\n")
+
+	return p.appendToContentStream([]byte(buf.String()))
+}
+
+// ensureFontResource registers a Type1 font in the page's /Resources /Font dict.
+// If a font with the same /BaseFont already exists, its resource name is returned.
+func (p *Page) ensureFontResource(pdfFontName string) (string, error) {
+	pageDict := p.pageDict()
+	if pageDict == nil {
+		return "", fmt.Errorf("add text: page has no dict")
+	}
+
+	resources := p.pageResources()
+	if resources == nil {
+		resources = pdfDict{}
+		pageDict["/Resources"] = resources
+	}
+
+	fontVal := resolveRef(p.doc.objects, resources["/Font"])
+	fontDict, _ := fontVal.(pdfDict)
+	if fontDict == nil {
+		fontDict = pdfDict{}
+		resources["/Font"] = fontDict
+	}
+
+	// Check if font with this BaseFont already registered.
+	for name, val := range fontDict {
+		ref, ok := val.(pdfRef)
+		if !ok {
+			continue
+		}
+		obj := p.doc.objects[ref.Num]
+		if obj == nil {
+			continue
+		}
+		dict, ok := obj.Value.(pdfDict)
+		if !ok {
+			continue
+		}
+		if bf, ok := dict["/BaseFont"].(pdfName); ok && string(bf) == pdfFontName {
+			return name, nil
+		}
+	}
+
+	// Create new font object.
+	fontObjDict := pdfDict{
+		"/Type":     pdfName("/Font"),
+		"/Subtype":  pdfName("/Type1"),
+		"/BaseFont": pdfName(pdfFontName),
+	}
+	fontID := p.doc.nextID
+	p.doc.nextID++
+	p.doc.objects[fontID] = &pdfObject{Num: fontID, Value: fontObjDict}
+
+	name := nextFontName(fontDict)
+	fontDict[name] = pdfRef{Num: fontID}
+
+	return name, nil
+}
+
+// nextFontName returns the next available font resource name.
+func nextFontName(fontDict pdfDict) string {
+	for i := 0; ; i++ {
+		name := fmt.Sprintf("/F%d", i)
+		if _, exists := fontDict[name]; !exists {
+			return name
+		}
+	}
+}
+
+// ensureExtGState registers an ExtGState with the given fill opacity.
+func (p *Page) ensureExtGState(alpha float64) (string, error) {
+	pageDict := p.pageDict()
+	if pageDict == nil {
+		return "", fmt.Errorf("add text: page has no dict")
+	}
+
+	resources := p.pageResources()
+	if resources == nil {
+		resources = pdfDict{}
+		pageDict["/Resources"] = resources
+	}
+
+	gsVal := resolveRef(p.doc.objects, resources["/ExtGState"])
+	gsDict, _ := gsVal.(pdfDict)
+	if gsDict == nil {
+		gsDict = pdfDict{}
+		resources["/ExtGState"] = gsDict
+	}
+
+	gsObjDict := pdfDict{
+		"/ca": alpha,
+	}
+	gsID := p.doc.nextID
+	p.doc.nextID++
+	p.doc.objects[gsID] = &pdfObject{Num: gsID, Value: gsObjDict}
+
+	name := nextGSName(gsDict)
+	gsDict[name] = pdfRef{Num: gsID}
+
+	return name, nil
+}
+
+// nextGSName returns the next available ExtGState resource name.
+func nextGSName(gsDict pdfDict) string {
+	for i := 0; ; i++ {
+		name := fmt.Sprintf("/GS%d", i)
+		if _, exists := gsDict[name]; !exists {
+			return name
+		}
+	}
 }

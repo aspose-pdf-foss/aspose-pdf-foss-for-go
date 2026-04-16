@@ -1,6 +1,9 @@
 package asposepdf
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFontPDFName(t *testing.T) {
 	cases := []struct {
@@ -91,5 +94,170 @@ func TestWrapTextEmpty(t *testing.T) {
 	lines := wrapText("", widths, 12, 500)
 	if len(lines) != 0 {
 		t.Errorf("wrapText empty = %v, want []", lines)
+	}
+}
+
+func TestAddTextEmptyString(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.AddText("", TextStyle{}, Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 750})
+	if err != nil {
+		t.Fatalf("AddText empty: %v", err)
+	}
+}
+
+func TestAddTextInvalidRect(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.AddText("Hello", TextStyle{}, Rectangle{LLX: 300, LLY: 700, URX: 50, URY: 750})
+	if err == nil {
+		t.Fatal("expected error for invalid rect")
+	}
+}
+
+func TestAddTextInvalidSize(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.AddText("Hello", TextStyle{Size: -5}, Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 750})
+	if err == nil {
+		t.Fatal("expected error for negative size")
+	}
+}
+
+func TestAddTextInvalidFont(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.AddText("Hello", TextStyle{Font: Font(999)}, Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 750})
+	if err == nil {
+		t.Fatal("expected error for invalid font")
+	}
+}
+
+func TestAddTextDefaultStyle(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.AddText("Hello", TextStyle{}, Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 750})
+	if err != nil {
+		t.Fatalf("AddText default style: %v", err)
+	}
+	data, err := page.contentStreams()
+	if err != nil {
+		t.Fatalf("contentStreams: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "BT") {
+		t.Error("content stream missing BT")
+	}
+	if !strings.Contains(content, "(Hello) Tj") {
+		t.Error("content stream missing (Hello) Tj")
+	}
+	if !strings.Contains(content, "/F") {
+		t.Error("content stream missing font reference")
+	}
+}
+
+func TestAddTextAlignment(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	style := TextStyle{
+		Size:   12,
+		HAlign: HAlignCenter,
+		VAlign: VAlignMiddle,
+	}
+	err := page.AddText("Test", style, Rectangle{LLX: 0, LLY: 0, URX: 200, URY: 100})
+	if err != nil {
+		t.Fatalf("AddText center/middle: %v", err)
+	}
+	data, _ := page.contentStreams()
+	content := string(data)
+	if !strings.Contains(content, "BT") || !strings.Contains(content, "(Test) Tj") {
+		t.Error("missing text operators")
+	}
+}
+
+func TestAddTextBackground(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	bg := Color{R: 1, G: 1, B: 0, A: 1}
+	style := TextStyle{Background: &bg}
+	err := page.AddText("Hello", style, Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 750})
+	if err != nil {
+		t.Fatalf("AddText background: %v", err)
+	}
+	data, _ := page.contentStreams()
+	content := string(data)
+	if !strings.Contains(content, "re f") {
+		t.Error("content stream missing background rectangle fill")
+	}
+}
+
+func TestAddTextTransparency(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	c := Color{R: 0, G: 0, B: 0, A: 0.5}
+	style := TextStyle{Color: &c}
+	err := page.AddText("Hello", style, Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 750})
+	if err != nil {
+		t.Fatalf("AddText transparency: %v", err)
+	}
+	resources := page.pageResources()
+	gsVal := resolveRef(page.doc.objects, resources["/ExtGState"])
+	gsDict, ok := gsVal.(pdfDict)
+	if !ok || len(gsDict) == 0 {
+		t.Error("expected ExtGState resource for alpha < 1")
+	}
+}
+
+func TestAddTextUnderline(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	style := TextStyle{Underline: true}
+	err := page.AddText("Hello", style, Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 750})
+	if err != nil {
+		t.Fatalf("AddText underline: %v", err)
+	}
+	data, _ := page.contentStreams()
+	content := string(data)
+	etIdx := strings.Index(content, "ET")
+	reIdx := strings.LastIndex(content, "re f")
+	if etIdx < 0 || reIdx < 0 || reIdx < etIdx {
+		t.Error("expected underline rectangle after ET")
+	}
+}
+
+func TestAddTextStrikethrough(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	style := TextStyle{Strikethrough: true}
+	err := page.AddText("Hello", style, Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 750})
+	if err != nil {
+		t.Fatalf("AddText strikethrough: %v", err)
+	}
+	data, _ := page.contentStreams()
+	content := string(data)
+	etIdx := strings.Index(content, "ET")
+	reIdx := strings.LastIndex(content, "re f")
+	if etIdx < 0 || reIdx < 0 || reIdx < etIdx {
+		t.Error("expected strikethrough rectangle after ET")
+	}
+}
+
+func TestAddTextClipping(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.AddText("Hello", TextStyle{}, Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 750})
+	if err != nil {
+		t.Fatalf("AddText: %v", err)
+	}
+	data, _ := page.contentStreams()
+	content := string(data)
+	if !strings.Contains(content, "re W n") {
+		t.Error("content stream missing clipping path")
+	}
+	if !strings.Contains(content, "\nq\n") {
+		t.Error("content stream missing q (save state)")
+	}
+	if !strings.Contains(content, "\nQ\n") {
+		t.Error("content stream missing Q (restore state)")
 	}
 }
