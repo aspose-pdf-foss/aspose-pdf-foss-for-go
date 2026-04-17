@@ -42,7 +42,8 @@ merged.Save("merged.pdf")
 - **Optimize images** — reduce file size by downscaling images above a target DPI and converting opaque PNGs to JPEG
 - **Create blank documents** — create single-page blank PDFs with custom dimensions or predefined page formats (A4, Letter, Legal, A3)
 - **Add blank pages** — append or insert blank pages into existing documents at any position
-- **Add text** — draw text on pages with font selection, alignment, word wrap, color, background, underline, and strikethrough
+- **Add text** — draw text on pages with font selection, alignment, word wrap, color, background, underline, strikethrough, rotation, and behind-content mode
+- **Text watermarks** — apply text watermarks to all or selected pages with full styling control
 - **Stream input** — open PDFs from any `io.Reader`, not just file paths
 
 ## API Reference
@@ -364,17 +365,42 @@ page.AddText("Hello, PDF!", title, pdf.Rectangle{
     LLX: 50, LLY: 700, URX: 545, URY: 750,
 })
 
-// Highlighted text with background
-bg := pdf.Color{R: 1, G: 1, B: 0, A: 0.5}
-note := pdf.TextStyle{
-    Font:       pdf.FontCourier,
-    Size:       10,
-    Background: &bg,
-    Underline:  true,
-}
-page.AddText("Important note", note, pdf.Rectangle{
-    LLX: 50, LLY: 650, URX: 300, URY: 690,
+// Rotated text (e.g. column headers)
+page.AddText("Revenue", pdf.TextStyle{
+    Font:     pdf.FontHelveticaBold,
+    Size:     10,
+    Rotation: 45, // degrees counter-clockwise
+}, pdf.Rectangle{LLX: 100, LLY: 500, URX: 130, URY: 600})
+
+doc.Save("output.pdf")
+```
+
+### Text Watermarks
+
+```go
+doc, _ := pdf.Open("input.pdf")
+
+// Add watermark to all pages
+doc.AddTextWatermark("CONFIDENTIAL", pdf.TextStyle{
+    Font:     pdf.FontHelveticaBold,
+    Size:     60,
+    Color:    &pdf.Color{R: 0.8, G: 0.8, B: 0.8, A: 0.3},
+    Rotation: 45,
+    HAlign:   pdf.HAlignCenter,
+    VAlign:   pdf.VAlignMiddle,
+    Behind:   true, // draw under existing content
 })
+
+// Watermark on specific pages only
+doc.AddTextWatermark("DRAFT", pdf.TextStyle{
+    Font:     pdf.FontHelvetica,
+    Size:     48,
+    Color:    &pdf.Color{R: 1, G: 0, B: 0, A: 0.2},
+    Rotation: -45,
+    HAlign:   pdf.HAlignCenter,
+    VAlign:   pdf.VAlignMiddle,
+    Behind:   true,
+}, 1, 3) // pages 1 and 3
 
 doc.Save("output.pdf")
 ```
