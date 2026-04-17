@@ -57,6 +57,8 @@ type TextStyle struct {
 	LineSpacing   float64 // multiplier of font size; 0 treated as 1.2
 	Underline     bool
 	Strikethrough bool
+	Rotation      float64 // degrees counter-clockwise; pivot = lower-left corner of rect; default 0
+	Behind        bool    // if true, text is drawn under existing page content; default false
 }
 
 // fontPDFName returns the PDF base font name for a Font constant.
