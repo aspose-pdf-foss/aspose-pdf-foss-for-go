@@ -317,7 +317,35 @@ func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
 	// Restore state.
 	buf.WriteString("Q\n")
 
+	if style.Behind {
+		return p.prependToContentStream([]byte(buf.String()))
+	}
 	return p.appendToContentStream([]byte(buf.String()))
+}
+
+// prependToContentStream inserts data before the existing page content.
+func (p *Page) prependToContentStream(data []byte) error {
+	existing, err := p.contentStreams()
+	if err != nil {
+		return err
+	}
+
+	newData := make([]byte, 0, len(data)+len(existing))
+	newData = append(newData, data...)
+	newData = append(newData, existing...)
+	newStream := &pdfStream{
+		Dict:    pdfDict{},
+		Data:    newData,
+		Decoded: true,
+	}
+
+	newID := p.doc.nextID
+	p.doc.nextID++
+	p.doc.objects[newID] = &pdfObject{Num: newID, Value: newStream}
+
+	pageDict := p.pageDict()
+	pageDict["/Contents"] = pdfRef{Num: newID}
+	return nil
 }
 
 // ensureFontResource registers a Type1 font in the page's /Resources /Font dict.

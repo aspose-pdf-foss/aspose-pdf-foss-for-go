@@ -242,6 +242,34 @@ func TestAddTextStrikethrough(t *testing.T) {
 	}
 }
 
+func TestAddTextBehind(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+
+	// Add initial text (appears first in content stream).
+	err := page.AddText("Foreground", TextStyle{}, Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 750})
+	if err != nil {
+		t.Fatalf("AddText foreground: %v", err)
+	}
+
+	// Add behind text (should appear before the foreground text).
+	err = page.AddText("Background", TextStyle{Behind: true}, Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 750})
+	if err != nil {
+		t.Fatalf("AddText behind: %v", err)
+	}
+
+	data, _ := page.contentStreams()
+	content := string(data)
+	bgIdx := strings.Index(content, "(Background) Tj")
+	fgIdx := strings.Index(content, "(Foreground) Tj")
+	if bgIdx < 0 || fgIdx < 0 {
+		t.Fatalf("missing text operators; content:\n%s", content)
+	}
+	if bgIdx > fgIdx {
+		t.Errorf("Behind text should appear before foreground text in content stream; bg at %d, fg at %d", bgIdx, fgIdx)
+	}
+}
+
 func TestAddTextClipping(t *testing.T) {
 	doc := NewDocument(595, 842)
 	page, _ := doc.Page(1)
