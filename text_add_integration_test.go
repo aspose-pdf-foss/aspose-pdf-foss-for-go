@@ -168,3 +168,79 @@ func TestAddTextRotationRoundTrip(t *testing.T) {
 		t.Errorf("extracted text missing 'CONFIDENTIAL': %q", texts[0])
 	}
 }
+
+func TestAddTextWatermarkRoundTrip(t *testing.T) {
+	// Create a 2-page document with some content.
+	doc := asposepdf.NewDocumentFromFormat(asposepdf.PageFormatA4)
+	doc.AddBlankPageFromFormat(asposepdf.PageFormatA4)
+
+	page1, _ := doc.Page(1)
+	page1.AddText("Page one content", asposepdf.TextStyle{
+		Font: asposepdf.FontHelvetica,
+		Size: 14,
+	}, asposepdf.Rectangle{LLX: 50, LLY: 750, URX: 545, URY: 800})
+
+	page2, _ := doc.Page(2)
+	page2.AddText("Page two content", asposepdf.TextStyle{
+		Font: asposepdf.FontHelvetica,
+		Size: 14,
+	}, asposepdf.Rectangle{LLX: 50, LLY: 750, URX: 545, URY: 800})
+
+	// Add watermark to all pages.
+	gray := asposepdf.Color{R: 0.8, G: 0.8, B: 0.8, A: 0.3}
+	err := doc.AddTextWatermark("CONFIDENTIAL", asposepdf.TextStyle{
+		Font:     asposepdf.FontHelveticaBold,
+		Size:     60,
+		Color:    &gray,
+		Rotation: 45,
+		HAlign:   asposepdf.HAlignCenter,
+		VAlign:   asposepdf.VAlignMiddle,
+		Behind:   true,
+	})
+	if err != nil {
+		t.Fatalf("AddTextWatermark: %v", err)
+	}
+
+	// Save.
+	outDir := filepath.Join("result_files", "TestAddTextWatermarkRoundTrip")
+	os.MkdirAll(outDir, 0o755)
+	outPath := filepath.Join(outDir, "output.pdf")
+	if err := doc.Save(outPath); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// Validate.
+	report, err := asposepdf.Validate(outPath)
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if !report.Valid {
+		for _, issue := range report.Issues {
+			t.Errorf("validation issue: [%s] %s", issue.Code, issue.Message)
+		}
+	}
+
+	// Reopen and verify text on both pages.
+	reopened, err := asposepdf.Open(outPath)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	texts, err := reopened.ExtractText()
+	if err != nil {
+		t.Fatalf("extract text: %v", err)
+	}
+	if len(texts) < 2 {
+		t.Fatalf("expected 2 pages, got %d", len(texts))
+	}
+	for i, text := range texts {
+		if !strings.Contains(text, "CONFIDENTIAL") {
+			t.Errorf("page %d missing watermark text: %q", i+1, text)
+		}
+	}
+	if !strings.Contains(texts[0], "Page one") {
+		t.Errorf("page 1 missing original content: %q", texts[0])
+	}
+	if !strings.Contains(texts[1], "Page two") {
+		t.Errorf("page 2 missing original content: %q", texts[1])
+	}
+}
