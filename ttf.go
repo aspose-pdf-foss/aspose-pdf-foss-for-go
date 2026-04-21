@@ -128,6 +128,9 @@ func parseHead(f *ttfFont, tables map[string]tableRecord) error {
 		return fmt.Errorf("parse ttf head: too small")
 	}
 	f.unitsPerEm = binary.BigEndian.Uint16(b[18:20])
+	if f.unitsPerEm == 0 {
+		return fmt.Errorf("parse ttf head: unitsPerEm is zero")
+	}
 	f.xMin = int16(binary.BigEndian.Uint16(b[36:38]))
 	f.yMin = int16(binary.BigEndian.Uint16(b[38:40]))
 	f.xMax = int16(binary.BigEndian.Uint16(b[40:42]))
