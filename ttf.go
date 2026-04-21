@@ -351,9 +351,13 @@ func parseOS2(f *ttfFont, tables map[string]tableRecord) error {
 	fsSelection := binary.BigEndian.Uint16(b[62:64])
 	f.flagsItalic = fsSelection&0x01 != 0
 	f.flagsBold = fsSelection&0x20 != 0
-	// sCapHeight is at offset 88 in OS/2 version 2+. Version 0/1 may omit it.
+	// sCapHeight is at offset 88 in OS/2 version 2+. Version 0/1 omits it;
+	// fall back to ~70% of ascent (PDF FontDescriptor viewers use this for layout).
 	if len(b) >= 90 {
 		f.capHeight = int16(binary.BigEndian.Uint16(b[88:90]))
+	}
+	if f.capHeight == 0 {
+		f.capHeight = f.ascent * 7 / 10
 	}
 	return nil
 }

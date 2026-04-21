@@ -171,10 +171,8 @@ func TestParseTTF_OS2(t *testing.T) {
 	if f.flagsItalic {
 		t.Error("DejaVuSans flagged Italic (wrong)")
 	}
-	// capHeight may be 0 if OS/2 version doesn't include it (v0/v1).
-	// Just check that it's not negative (which would indicate parse error).
-	if f.capHeight < 0 {
-		t.Errorf("capHeight = %d, want non-negative", f.capHeight)
+	if f.capHeight == 0 {
+		t.Error("capHeight not populated")
 	}
 }
 
