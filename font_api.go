@@ -1,0 +1,37 @@
+package asposepdf
+
+// Font is implemented by standard 14 fonts and embedded TTF fonts.
+// Use the package-level vars (FontHelvetica, ...) or LoadFont to obtain a Font.
+type Font interface {
+	// BaseFont returns the PostScript name, e.g. "Helvetica" or "ArialMT".
+	BaseFont() string
+	// IsEmbedded reports whether font data is embedded in the PDF (true for TTF, false for standard 14).
+	IsEmbedded() bool
+}
+
+// standardFont is the built-in Font implementation for the 14 standard PDF fonts.
+type standardFont struct {
+	name string // PostScript name without leading slash, e.g. "Helvetica"
+}
+
+func (s standardFont) BaseFont() string { return s.name }
+func (s standardFont) IsEmbedded() bool { return false }
+
+// Standard 14 PDF fonts. These Fonts need not be embedded — every PDF viewer
+// is required to render them.
+var (
+	FontHelvetica            Font = standardFont{name: "Helvetica"}
+	FontHelveticaBold        Font = standardFont{name: "Helvetica-Bold"}
+	FontHelveticaOblique     Font = standardFont{name: "Helvetica-Oblique"}
+	FontHelveticaBoldOblique Font = standardFont{name: "Helvetica-BoldOblique"}
+	FontTimesRoman           Font = standardFont{name: "Times-Roman"}
+	FontTimesBold            Font = standardFont{name: "Times-Bold"}
+	FontTimesItalic          Font = standardFont{name: "Times-Italic"}
+	FontTimesBoldItalic      Font = standardFont{name: "Times-BoldItalic"}
+	FontCourier              Font = standardFont{name: "Courier"}
+	FontCourierBold          Font = standardFont{name: "Courier-Bold"}
+	FontCourierOblique       Font = standardFont{name: "Courier-Oblique"}
+	FontCourierBoldOblique   Font = standardFont{name: "Courier-BoldOblique"}
+	FontSymbol               Font = standardFont{name: "Symbol"}
+	FontZapfDingbats         Font = standardFont{name: "ZapfDingbats"}
+)

@@ -5,38 +5,33 @@ import (
 	"testing"
 )
 
-func TestFontPDFName(t *testing.T) {
+func TestStandardFontBaseFont(t *testing.T) {
 	cases := []struct {
 		font Font
 		want string
 	}{
-		{FontHelvetica, "/Helvetica"},
-		{FontHelveticaBold, "/Helvetica-Bold"},
-		{FontHelveticaOblique, "/Helvetica-Oblique"},
-		{FontHelveticaBoldOblique, "/Helvetica-BoldOblique"},
-		{FontTimesRoman, "/Times-Roman"},
-		{FontTimesBold, "/Times-Bold"},
-		{FontTimesItalic, "/Times-Italic"},
-		{FontTimesBoldItalic, "/Times-BoldItalic"},
-		{FontCourier, "/Courier"},
-		{FontCourierBold, "/Courier-Bold"},
-		{FontCourierOblique, "/Courier-Oblique"},
-		{FontCourierBoldOblique, "/Courier-BoldOblique"},
-		{FontSymbol, "/Symbol"},
-		{FontZapfDingbats, "/ZapfDingbats"},
+		{FontHelvetica, "Helvetica"},
+		{FontHelveticaBold, "Helvetica-Bold"},
+		{FontHelveticaOblique, "Helvetica-Oblique"},
+		{FontHelveticaBoldOblique, "Helvetica-BoldOblique"},
+		{FontTimesRoman, "Times-Roman"},
+		{FontTimesBold, "Times-Bold"},
+		{FontTimesItalic, "Times-Italic"},
+		{FontTimesBoldItalic, "Times-BoldItalic"},
+		{FontCourier, "Courier"},
+		{FontCourierBold, "Courier-Bold"},
+		{FontCourierOblique, "Courier-Oblique"},
+		{FontCourierBoldOblique, "Courier-BoldOblique"},
+		{FontSymbol, "Symbol"},
+		{FontZapfDingbats, "ZapfDingbats"},
 	}
 	for _, tc := range cases {
-		got := fontPDFName(tc.font)
-		if got != tc.want {
-			t.Errorf("fontPDFName(%d) = %q, want %q", tc.font, got, tc.want)
+		if got := tc.font.BaseFont(); got != tc.want {
+			t.Errorf("%T.BaseFont() = %q, want %q", tc.font, got, tc.want)
 		}
-	}
-}
-
-func TestFontPDFNameInvalid(t *testing.T) {
-	got := fontPDFName(Font(999))
-	if got != "/Helvetica" {
-		t.Errorf("fontPDFName(999) = %q, want /Helvetica (fallback)", got)
+		if tc.font.IsEmbedded() {
+			t.Errorf("%v.IsEmbedded() = true, want false for standard 14", tc.font)
+		}
 	}
 }
 
@@ -121,15 +116,6 @@ func TestAddTextInvalidSize(t *testing.T) {
 	err := page.AddText("Hello", TextStyle{Size: -5}, Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 750})
 	if err == nil {
 		t.Fatal("expected error for negative size")
-	}
-}
-
-func TestAddTextInvalidFont(t *testing.T) {
-	doc := NewDocument(595, 842)
-	page, _ := doc.Page(1)
-	err := page.AddText("Hello", TextStyle{Font: Font(999)}, Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 750})
-	if err == nil {
-		t.Fatal("expected error for invalid font")
 	}
 }
 

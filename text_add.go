@@ -130,11 +130,6 @@ func escapeStringPDF(s string) string {
 	return b.String()
 }
 
-// isValidFont returns true if f is one of the 14 standard font constants.
-func isValidFont(f Font) bool {
-	return f >= FontHelvetica && f <= FontZapfDingbats
-}
-
 // AddText draws text inside the rectangle using the given style.
 // Text is wrapped at word boundaries to fit the rectangle width.
 // Content exceeding the rectangle height is clipped.
@@ -148,8 +143,14 @@ func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
 	if style.Size < 0 {
 		return fmt.Errorf("add text: font size must be non-negative, got %g", style.Size)
 	}
-	if !isValidFont(style.Font) {
-		return fmt.Errorf("add text: invalid font constant %d", style.Font)
+	// Default Font if unset.
+	font := style.Font
+	if font == nil {
+		font = FontHelvetica
+	}
+	sf, ok := font.(standardFont)
+	if !ok {
+		return fmt.Errorf("add text: unsupported font type %T", font)
 	}
 
 	// Apply defaults.
@@ -167,7 +168,7 @@ func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
 	}
 
 	// Get font metrics.
-	pdfFontName := fontPDFName(style.Font)
+	pdfFontName := "/" + sf.name
 	widths, _ := standard14Widths(pdfFontName)
 
 	// Word wrap.
