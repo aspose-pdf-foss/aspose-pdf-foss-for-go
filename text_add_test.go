@@ -524,10 +524,6 @@ func TestAddTextNilFontDefaultsToHelvetica(t *testing.T) {
 	}
 }
 
-func TestAddTextUnsupportedFontType(t *testing.T) {
-	t.Skip("skipped: cannot implement Font externally in package-internal tests without access to unexported methods")
-}
-
 func TestAddTextRejectsCrossDocumentFont(t *testing.T) {
 	docA := NewDocument(595, 842)
 	font, err := docA.LoadFont("testdata/DejaVuSans.ttf")
