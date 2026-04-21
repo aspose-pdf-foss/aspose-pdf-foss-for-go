@@ -9,6 +9,10 @@ import (
 // widthFn returns advance width in points for a single rune.
 type widthFn func(r rune) float64
 
+// encodeFn returns a PDF string operand for s — "(...)" for single-byte
+// encoding, "<...>" for hex glyph IDs.
+type encodeFn func(s string) string
+
 // wrapText splits text into lines that fit within maxWidth points.
 // It breaks at spaces; words longer than maxWidth are broken on rune boundaries.
 // Explicit newlines in the input force a line break.
@@ -151,10 +155,6 @@ func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
 	if font == nil {
 		font = FontHelvetica
 	}
-	sf, ok := font.(standardFont)
-	if !ok {
-		return fmt.Errorf("add text: unsupported font type %T", font)
-	}
 
 	// Apply defaults.
 	fontSize := style.Size
@@ -170,20 +170,77 @@ func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
 		textColor = *style.Color
 	}
 
-	// Get font metrics.
-	pdfFontName := "/" + sf.name
-	widths, _ := standard14Widths(pdfFontName)
-
-	// Word wrap.
 	rectWidth := rect.URX - rect.LLX
 	rectHeight := rect.URY - rect.LLY
-	width := func(r rune) float64 {
-		code, ok := winAnsiEncodeRune(r)
-		if !ok {
-			code = byte('?')
+
+	// Resolve font-specific callbacks.
+	var (
+		width        widthFn
+		encode       encodeFn
+		fontResName  string
+		ascentFactor float64
+	)
+	switch f := font.(type) {
+	case standardFont:
+		pdfFontName := "/" + f.name
+		widths, _ := standard14Widths(pdfFontName)
+		width = func(r rune) float64 {
+			code, ok := winAnsiEncodeRune(r)
+			if !ok {
+				code = byte('?')
+			}
+			return widths[code] / 1000.0 * fontSize
 		}
-		return widths[code] / 1000.0 * fontSize
+		encode = func(s string) string {
+			var b strings.Builder
+			b.WriteByte('(')
+			for _, r := range s {
+				code, ok := winAnsiEncodeRune(r)
+				if !ok {
+					code = byte('?')
+				}
+				switch code {
+				case '(', ')', '\\':
+					b.WriteByte('\\')
+				}
+				b.WriteByte(code)
+			}
+			b.WriteByte(')')
+			return b.String()
+		}
+		name, err := p.ensureStandardFontResource(pdfFontName)
+		if err != nil {
+			return err
+		}
+		fontResName = name
+		ascentFactor = 0.8
+	case *embeddedFont:
+		width = func(r rune) float64 {
+			gid := f.ttf.glyphID(r)
+			if int(gid) >= len(f.ttf.glyphWidths) {
+				return 0
+			}
+			return float64(f.ttf.glyphWidths[gid]) / float64(f.ttf.unitsPerEm) * fontSize
+		}
+		encode = func(s string) string {
+			var b strings.Builder
+			b.WriteByte('<')
+			for _, r := range s {
+				fmt.Fprintf(&b, "%04X", f.ttf.glyphID(r))
+			}
+			b.WriteByte('>')
+			return b.String()
+		}
+		name, err := p.ensureEmbeddedFontResource(f)
+		if err != nil {
+			return err
+		}
+		fontResName = name
+		ascentFactor = float64(f.ttf.ascent) / float64(f.ttf.unitsPerEm)
+	default:
+		return fmt.Errorf("add text: unsupported font type %T", font)
 	}
+
 	lines := wrapText(text, width, rectWidth)
 	if len(lines) == 0 {
 		return nil
@@ -202,12 +259,6 @@ func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
 		startY = rect.LLY + totalTextHeight
 	default: // VAlignTop
 		startY = rect.URY
-	}
-
-	// Register font resource.
-	fontResName, err := p.ensureFontResource(pdfFontName)
-	if err != nil {
-		return err
 	}
 
 	// Register ExtGState resources if needed.
@@ -304,7 +355,7 @@ func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
 		}
 
 		// Baseline Y: top of line area minus ascent.
-		ascent := 0.8 * fontSize
+		ascent := ascentFactor * fontSize
 		y := startY - float64(i)*lineHeight - ascent
 
 		// Apply coordinate offset for rotation.
@@ -319,7 +370,7 @@ func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
 			buf.WriteString(fmt.Sprintf("%s %s Td\n", formatFloat(adjX-prevX), formatFloat(adjY-prevY)))
 		}
 
-		buf.WriteString(fmt.Sprintf("(%s) Tj\n", escapeStringPDF(line)))
+		buf.WriteString(fmt.Sprintf("%s Tj\n", encode(line)))
 		linePositions = append(linePositions, linePos{x: adjX, y: adjY, width: lineWidth})
 	}
 
@@ -411,9 +462,9 @@ func (p *Page) prependToContentStream(data []byte) error {
 	return nil
 }
 
-// ensureFontResource registers a Type1 font in the page's /Resources /Font dict.
+// ensureStandardFontResource registers a Type1 font in the page's /Resources /Font dict.
 // If a font with the same /BaseFont already exists, its resource name is returned.
-func (p *Page) ensureFontResource(pdfFontName string) (string, error) {
+func (p *Page) ensureStandardFontResource(pdfFontName string) (string, error) {
 	pageDict := p.pageDict()
 	if pageDict == nil {
 		return "", fmt.Errorf("add text: page has no dict")
@@ -464,6 +515,38 @@ func (p *Page) ensureFontResource(pdfFontName string) (string, error) {
 	name := nextFontName(fontDict)
 	fontDict[name] = pdfRef{Num: fontID}
 
+	return name, nil
+}
+
+// ensureEmbeddedFontResource registers an already-embedded font (created by LoadFont)
+// in the page's /Resources /Font dict and returns the resource name. Caches the name
+// on the embeddedFont for reuse across pages.
+func (p *Page) ensureEmbeddedFontResource(ef *embeddedFont) (string, error) {
+	pageDict := p.pageDict()
+	if pageDict == nil {
+		return "", fmt.Errorf("add text: page has no dict")
+	}
+	resources := p.pageResources()
+	if resources == nil {
+		resources = pdfDict{}
+		pageDict["/Resources"] = resources
+	}
+	fontVal := resolveRef(p.doc.objects, resources["/Font"])
+	fontDict, _ := fontVal.(pdfDict)
+	if fontDict == nil {
+		fontDict = pdfDict{}
+		resources["/Font"] = fontDict
+	}
+
+	// Check whether this embedded font is already in the page's Font dict.
+	for name, val := range fontDict {
+		if ref, ok := val.(pdfRef); ok && ref.Num == ef.fontObjectID {
+			return name, nil
+		}
+	}
+	name := nextFontName(fontDict)
+	fontDict[name] = pdfRef{Num: ef.fontObjectID}
+	ef.resourceName = name
 	return name, nil
 }
 

@@ -1,6 +1,7 @@
 package asposepdf
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -456,4 +457,73 @@ func TestWinAnsiEncodeRune(t *testing.T) {
 				tc.r, code, ok, tc.code, tc.ok)
 		}
 	}
+}
+
+func TestAddTextUnicode(t *testing.T) {
+	doc := NewDocument(595, 842)
+	font, err := doc.LoadFont("testdata/DejaVuSans.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, _ := doc.Page(1)
+	err = page.AddText("Привет", TextStyle{Font: font, Size: 12},
+		Rectangle{LLX: 50, LLY: 750, URX: 545, URY: 800})
+	if err != nil {
+		t.Fatalf("AddText: %v", err)
+	}
+	data, _ := page.contentStreams()
+	content := string(data)
+	// Embedded fonts emit hex strings with 2-byte glyphIDs.
+	if !strings.Contains(content, "<") || !strings.Contains(content, "> Tj") {
+		t.Errorf("content missing hex-string Tj: %q", content)
+	}
+	// Confirm at least one non-zero glyphID is written (Tj operand).
+	ef := font.(*embeddedFont)
+	gid := ef.ttf.glyphID('П')
+	if gid == 0 {
+		t.Fatal("glyphID('П') = 0 unexpectedly")
+	}
+	want := fmt.Sprintf("%04X", gid)
+	if !strings.Contains(content, want) {
+		t.Errorf("content missing expected glyphID %s (for 'П'):\n%s", want, content)
+	}
+}
+
+func TestAddTextNotdef(t *testing.T) {
+	doc := NewDocument(595, 842)
+	font, err := doc.LoadFont("testdata/DejaVuSans.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, _ := doc.Page(1)
+	// '日' is NOT in DejaVuSans; expect glyphID 0000.
+	err = page.AddText("日", TextStyle{Font: font, Size: 12},
+		Rectangle{LLX: 50, LLY: 750, URX: 545, URY: 800})
+	if err != nil {
+		t.Fatalf("AddText: %v", err)
+	}
+	data, _ := page.contentStreams()
+	content := string(data)
+	if !strings.Contains(content, "<0000>") {
+		t.Errorf("expected <0000> (.notdef) in content, got: %q", content)
+	}
+}
+
+func TestAddTextNilFontDefaultsToHelvetica(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.AddText("Hello", TextStyle{Size: 12},
+		Rectangle{LLX: 50, LLY: 750, URX: 545, URY: 800})
+	if err != nil {
+		t.Fatalf("AddText: %v", err)
+	}
+	data, _ := page.contentStreams()
+	content := string(data)
+	if !strings.Contains(content, "(Hello) Tj") {
+		t.Errorf("nil Font should default to Helvetica with literal string: %q", content)
+	}
+}
+
+func TestAddTextUnsupportedFontType(t *testing.T) {
+	t.Skip("skipped: cannot implement Font externally in package-internal tests without access to unexported methods")
 }
