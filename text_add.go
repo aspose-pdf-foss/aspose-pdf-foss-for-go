@@ -502,11 +502,18 @@ func (p *Page) ensureStandardFontResource(pdfFontName string) (string, error) {
 		}
 	}
 
-	// Create new font object.
+	// Create new font object. /Encoding must match how AddText encodes strings
+	// (WinAnsi); without it viewers fall back to the font's built-in encoding
+	// (StandardEncoding for most), where several WinAnsi bytes — e.g. 0x97 em-dash
+	// — are undefined and render as a missing glyph. Symbol and ZapfDingbats
+	// keep their built-in encodings — WinAnsi is not applicable there.
 	fontObjDict := pdfDict{
 		"/Type":     pdfName("/Font"),
 		"/Subtype":  pdfName("/Type1"),
 		"/BaseFont": pdfName(pdfFontName),
+	}
+	if pdfFontName != "/Symbol" && pdfFontName != "/ZapfDingbats" {
+		fontObjDict["/Encoding"] = pdfName("/WinAnsiEncoding")
 	}
 	fontID := p.doc.nextID
 	p.doc.nextID++
