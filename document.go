@@ -205,6 +205,34 @@ func (d *Document) SetPermissions(p Permissions) {
 	d.encrypt.hasPermissions = true
 }
 
+// SetEncryption configures every encryption-related setting at once from
+// an EncryptionOptions struct. It replaces any prior configuration set by
+// SetPassword or SetPermissions. See EncryptionOptions for field-level
+// semantics; nil Permissions means "grant all".
+//
+// SetPassword and SetPermissions remain convenient for one-liner updates
+// and compose cleanly either before or after SetEncryption.
+//
+// Example:
+//
+//	doc.SetEncryption(asposepdf.EncryptionOptions{
+//	    UserPassword:  "user",
+//	    OwnerPassword: "owner",
+//	    Permissions:   &asposepdf.Permissions{AllowPrint: true, AllowCopy: true},
+//	})
+//	doc.Save("restricted.pdf")
+func (d *Document) SetEncryption(opts EncryptionOptions) {
+	cfg := &encryptConfig{
+		userPassword:  opts.UserPassword,
+		ownerPassword: opts.OwnerPassword,
+	}
+	if opts.Permissions != nil {
+		cfg.permissions = opts.Permissions.toPDFBits()
+		cfg.hasPermissions = true
+	}
+	d.encrypt = cfg
+}
+
 // WriteTo writes the document to w. It implements io.WriterTo.
 func (d *Document) WriteTo(w io.Writer) (int64, error) {
 	if len(d.pages) == 0 {

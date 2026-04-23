@@ -84,6 +84,36 @@ func (p Permissions) toPDFBits() int32 {
 	return int32(bits)
 }
 
+// EncryptionOptions bundles every knob that controls how a document is
+// encrypted when saved. It is the unified structured input for
+// (*Document).SetEncryption; the shorter SetPassword / SetPermissions
+// methods remain available for the common case of one-line updates.
+//
+// Zero values:
+//
+//	UserPassword  — no password (empty string is a valid "open without
+//	                password" user-password under R<=4; the PDF still
+//	                carries permissions).
+//	OwnerPassword — defaults to UserPassword, matching Adobe behavior.
+//	Permissions   — nil means "grant all" (the historical default);
+//	                pass a non-nil pointer to restrict. Permissions{}
+//	                (value, not pointer) deliberately denies everything,
+//	                so the pointer distinguishes "omitted" from "deny".
+//
+// Example:
+//
+//	doc.SetEncryption(asposepdf.EncryptionOptions{
+//	    UserPassword:  "user",
+//	    OwnerPassword: "owner",
+//	    Permissions:   &asposepdf.Permissions{AllowPrint: true, AllowCopy: true},
+//	})
+//	doc.Save("restricted.pdf")
+type EncryptionOptions struct {
+	UserPassword  string
+	OwnerPassword string
+	Permissions   *Permissions
+}
+
 // encryptConfig holds password and permission settings for encrypting a document.
 type encryptConfig struct {
 	userPassword   string

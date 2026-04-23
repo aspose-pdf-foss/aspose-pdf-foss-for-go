@@ -132,13 +132,13 @@ doc.Save("clean.pdf")
 // Standalone function — encrypts with default all-allow permissions
 err := pdf.Encrypt("input.pdf", "output.pdf", "userpass", "ownerpass")
 
-// Via Document (applied on Save/WriteTo)
+// Simple case on a Document (applied on Save/WriteTo)
 doc, _ := pdf.Open("input.pdf")
 doc.SetPassword("userpass", "ownerpass")
 err = doc.Save("output.pdf")
 
-// With explicit viewer permissions (RC4-128, Standard Security Handler R=3).
-// Flags omitted from Permissions{} are denied; if SetPermissions is not
+// Granular permissions (RC4-128, Standard Security Handler R=3).
+// Fields omitted from Permissions{} are denied; if SetPermissions is not
 // called at all, every operation is allowed (backward compatible default).
 doc.SetPermissions(pdf.Permissions{
     AllowPrint:         true,
@@ -146,9 +146,20 @@ doc.SetPermissions(pdf.Permissions{
     AllowAccessibility: true,
 })
 doc.Save("restricted.pdf")
+
+// One-call unified API via options — equivalent to SetPassword + SetPermissions
+// in a single struct; replaces any prior encryption config on the document.
+doc.SetEncryption(pdf.EncryptionOptions{
+    UserPassword:  "userpass",
+    OwnerPassword: "ownerpass",
+    Permissions:   &pdf.Permissions{AllowPrint: true, AllowCopy: true},
+})
+doc.Save("restricted.pdf")
 ```
 
 `Permissions` fields map to ISO 32000-1 §7.6.3.2 Table 22 bits 3, 4, 5, 6, 9, 10, 11, 12. The library encodes them with the Adobe convention (reserved bits 7-8 and 13-32 set high). Permissions are enforced by PDF viewers — the library itself is not a DRM mechanism.
+
+In `EncryptionOptions`, `Permissions` is a pointer so that `nil` (omitted) means "grant all", distinguishing the default from an explicit `&Permissions{}` which denies everything.
 
 ### Validation
 
