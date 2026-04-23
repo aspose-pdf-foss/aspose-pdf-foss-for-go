@@ -30,7 +30,7 @@ merged.Save("merged.pdf")
 - **Rotate** — rotate pages by 90°, 180°, or 270°
 - **Page info** — read page count, dimensions, all PDF boxes (MediaBox, CropBox, TrimBox, BleedBox, ArtBox), and page labels
 - **Metadata** — read document Info (title, author, dates, etc.)
-- **Encrypt** — password-protect PDFs with RC4-128 (PDF 1.4 Standard Security Handler)
+- **Encrypt** — password-protect PDFs with RC4-128 (PDF 1.4 Standard Security Handler) and granular viewer permissions (print, copy, modify, annotate, form fill, accessibility, assembly, high-res print)
 - **Validate** — check structural integrity of a PDF file
 - **Text extraction** — extract text from pages in visual reading order with full layout info (coordinates, font, bold/italic, color, sub/superscript)
 - **Image extraction** — extract images as JPEG (passthrough) or PNG with position, dimensions, and color space metadata; supports DeviceRGB, DeviceGray, DeviceCMYK, Indexed, ICCBased color spaces, soft masks (alpha), inline images, and Form XObjects
@@ -129,14 +129,26 @@ doc.Save("clean.pdf")
 ### Encryption
 
 ```go
-// Standalone function
+// Standalone function — encrypts with default all-allow permissions
 err := pdf.Encrypt("input.pdf", "output.pdf", "userpass", "ownerpass")
 
 // Via Document (applied on Save/WriteTo)
 doc, _ := pdf.Open("input.pdf")
-doc = doc.SetPassword("userpass", "ownerpass")
+doc.SetPassword("userpass", "ownerpass")
 err = doc.Save("output.pdf")
+
+// With explicit viewer permissions (RC4-128, Standard Security Handler R=3).
+// Flags omitted from Permissions{} are denied; if SetPermissions is not
+// called at all, every operation is allowed (backward compatible default).
+doc.SetPermissions(pdf.Permissions{
+    AllowPrint:         true,
+    AllowCopy:          true,
+    AllowAccessibility: true,
+})
+doc.Save("restricted.pdf")
 ```
+
+`Permissions` fields map to ISO 32000-1 §7.6.3.2 Table 22 bits 3, 4, 5, 6, 9, 10, 11, 12. The library encodes them with the Adobe convention (reserved bits 7-8 and 13-32 set high). Permissions are enforced by PDF viewers — the library itself is not a DRM mechanism.
 
 ### Validation
 

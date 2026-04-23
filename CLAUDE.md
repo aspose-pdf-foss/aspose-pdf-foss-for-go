@@ -35,6 +35,7 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `(*Document).Reorder(order) error` — rearranges pages in place; pages may be repeated or omitted
 - `(*Document).Append(others...)` — appends all pages from others into this document; nil arguments are skipped
 - `(*Document).SetPassword(userPassword, ownerPassword)` — configures encryption; applied on Save/WriteTo
+- `(*Document).SetPermissions(p Permissions)` — configures viewer-enforced permissions (print, copy, modify, etc.) for encrypted documents; applied on Save/WriteTo
 - `(*Document).WriteTo(w) (int64, error)` — writes the document to an `io.Writer` (implements `io.WriterTo`)
 - `(*Document).Save(outputPath) error` — writes the document to a file
 - `(*Document).Metadata() (Metadata, error)` — returns Info metadata read from live in-memory state
@@ -118,6 +119,7 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 
 **`encrypt.go`**
 - `Encrypt(inputPath, outputPath, userPassword, ownerPassword)` — writes a password-protected PDF using RC4-128 (PDF 1.4 Standard Security Handler, revision 3)
+- `Permissions` struct — eight bool flags (AllowPrint, AllowModify, AllowCopy, AllowAnnotations, AllowFormFill, AllowAccessibility, AllowAssembly, AllowPrintHighRes); zero value denies everything. Adobe-convention bit packing per ISO 32000-1 §7.6.3.2 Table 22 with reserved bits 7-8 and 13-32 set high
 
 **`validate.go`**
 - `Validate(inputPath)` — checks a PDF for structural integrity; returns `*ValidationReport` with a `Valid` flag and a list of `ValidationIssue` (code + message)
