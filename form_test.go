@@ -324,3 +324,63 @@ func TestSetNeedAppearancesFalseOnBlankDocDoesNotCreateAcroForm(t *testing.T) {
 		t.Error("blank document grew an /AcroForm dict after SetNeedAppearances(false)")
 	}
 }
+
+func TestFormFillIntegration(t *testing.T) {
+	src := testFile(t)
+	doc, err := pdf.Open(src)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	// Fill every field type with a known value.
+	doc.Form().Field("textField").(*pdf.TextBoxField).SetValue("integration test value")
+	doc.Form().Field("checkboxField").(*pdf.CheckboxField).SetChecked(false)
+	rb := doc.Form().Field("radiobuttonField").(*pdf.RadioButtonField)
+	rb.Options()[0].SetSelected(true)
+	cb := doc.Form().Field("comboboxField").(*pdf.ComboBoxField)
+	if len(cb.Options()) >= 2 {
+		cb.SetSelected(1)
+	}
+	lb := doc.Form().Field("listboxField").(*pdf.ListBoxField)
+	if len(lb.Options()) >= 1 {
+		lb.SetSelected(0)
+	}
+
+	var buf bytes.Buffer
+	if _, err := doc.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	doc2, err := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+
+	if got := doc2.Form().Field("textField").(*pdf.TextBoxField).Value(); got != "integration test value" {
+		t.Errorf("textField round-trip: got %q", got)
+	}
+	if doc2.Form().Field("checkboxField").(*pdf.CheckboxField).Checked() {
+		t.Error("checkboxField round-trip: still checked")
+	}
+	rb2 := doc2.Form().Field("radiobuttonField").(*pdf.RadioButtonField)
+	if !rb2.Options()[0].Selected() {
+		t.Error("radiobuttonField round-trip: option 0 not selected")
+	}
+}
+
+func TestFormCyrillicRoundTrip(t *testing.T) {
+	loaded, err := pdf.Open("testdata/PdfWithAcroForm.pdf")
+	if err != nil {
+		t.Skip("PdfWithAcroForm.pdf required")
+	}
+	tf := loaded.Form().Field("textField").(*pdf.TextBoxField)
+	const cyrillic = "Привет, мир!"
+	tf.SetValue(cyrillic)
+
+	var buf bytes.Buffer
+	loaded.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	tf2 := doc2.Form().Field("textField").(*pdf.TextBoxField)
+	if got := tf2.Value(); got != cyrillic {
+		t.Errorf("Cyrillic round-trip: got %q, want %q", got, cyrillic)
+	}
+}

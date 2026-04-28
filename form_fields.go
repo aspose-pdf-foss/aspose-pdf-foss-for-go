@@ -64,7 +64,19 @@ func (b *fieldBase) IsRequired() bool {
 }
 
 func (b *fieldBase) PageIndex() int {
-	// To be implemented in a later task; default 0 (unknown) for now.
+	if b.node == nil || len(b.node.widgets) == 0 || b.node.form == nil {
+		return 0
+	}
+	w := b.node.widgets[0]
+	pageRef, ok := w["/P"].(pdfRef)
+	if !ok {
+		return 0
+	}
+	for i, p := range b.node.form.doc.pages {
+		if p.Num == pageRef.Num {
+			return i + 1
+		}
+	}
 	return 0
 }
 
