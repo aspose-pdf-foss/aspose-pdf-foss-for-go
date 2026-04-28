@@ -2,6 +2,28 @@ package asposepdf
 
 import "fmt"
 
+// widgetOnStateName returns the export name of a widget's "on" appearance
+// state — the first key under /AP/N that is not /Off, with the leading
+// slash stripped. Returns "" if no /AP/N dict or no non-/Off key. Map
+// iteration order is unspecified; for widgets with multiple non-/Off
+// keys (rare/malformed), the result is non-deterministic.
+func widgetOnStateName(w pdfDict) string {
+	ap, ok := w["/AP"].(pdfDict)
+	if !ok {
+		return ""
+	}
+	n, ok := ap["/N"].(pdfDict)
+	if !ok {
+		return ""
+	}
+	for k := range n {
+		if k != "/Off" {
+			return k[1:]
+		}
+	}
+	return ""
+}
+
 // FormFieldType identifies the kind of form field. Returned by FieldType().
 type FormFieldType int
 
@@ -186,18 +208,8 @@ func (f *CheckboxField) SetChecked(v bool) {
 // gives the actual export name. Fall back to "Yes" if /AP/N is missing.
 func (f *CheckboxField) checkedExportName() string {
 	for _, w := range f.node.widgets {
-		ap, ok := w["/AP"].(pdfDict)
-		if !ok {
-			continue
-		}
-		n, ok := ap["/N"].(pdfDict)
-		if !ok {
-			continue
-		}
-		for k := range n {
-			if k != "/Off" {
-				return k[1:] // strip leading slash from /Yes etc.
-			}
+		if name := widgetOnStateName(w); name != "" {
+			return name
 		}
 	}
 	return "Yes"
@@ -253,16 +265,8 @@ type RadioButtonOptionField struct {
 // Name returns the option's export value (its /AS state when selected,
 // equivalently its non-/Off key in the widget's /AP/N dict).
 func (o *RadioButtonOptionField) Name() string {
-	ap, ok := o.widget["/AP"].(pdfDict)
-	if ok {
-		n, ok := ap["/N"].(pdfDict)
-		if ok {
-			for k := range n {
-				if k != "/Off" {
-					return k[1:]
-				}
-			}
-		}
+	if name := widgetOnStateName(o.widget); name != "" {
+		return name
 	}
 	if as, ok := o.widget["/AS"].(pdfName); ok && as != "/Off" {
 		return string(as)[1:]
@@ -497,8 +501,4 @@ func (f *ButtonField) Value() string           { return "" }
 func (f *ButtonField) SetValue(s string) error { return errPushButtonHasNoValue }
 
 var errPushButtonHasNoValue = fmt.Errorf("push button field has no value")
-
-func notYetImpl(name string) error {
-	return fmt.Errorf("%s: not yet implemented", name)
-}
 

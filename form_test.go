@@ -391,6 +391,83 @@ func TestFormFillIntegration(t *testing.T) {
 	}
 }
 
+func TestRadioButtonFieldSetValueInvalidReturnsError(t *testing.T) {
+	doc, _ := pdf.Open(testFile(t))
+	rb := doc.Form().Field("radiobuttonField").(*pdf.RadioButtonField)
+	beforeV := rb.Value()
+	if err := rb.SetValue("not-an-option"); err == nil {
+		t.Error("SetValue with invalid option returned nil error")
+	}
+	if rb.Value() != beforeV {
+		t.Errorf("SetValue error path mutated state: before=%q after=%q", beforeV, rb.Value())
+	}
+}
+
+func TestRadioButtonFieldSetValueEmptyClearsSelection(t *testing.T) {
+	doc, _ := pdf.Open(testFile(t))
+	rb := doc.Form().Field("radiobuttonField").(*pdf.RadioButtonField)
+	if err := rb.SetValue(""); err != nil {
+		t.Errorf("SetValue('') returned error: %v", err)
+	}
+	for _, opt := range rb.Options() {
+		if opt.Selected() {
+			t.Error("after SetValue(''), some option still appears selected")
+		}
+	}
+}
+
+func TestComboBoxFieldSetValueInvalidNonEditableReturnsError(t *testing.T) {
+	doc, _ := pdf.Open(testFile(t))
+	cb := doc.Form().Field("comboboxField").(*pdf.ComboBoxField)
+	if err := cb.SetValue("not-an-option"); err == nil {
+		t.Error("SetValue with invalid option on non-editable combo returned nil error")
+	}
+}
+
+func TestCheckboxFieldSetValueAcceptsBooleanStrings(t *testing.T) {
+	doc, _ := pdf.Open(testFile(t))
+	cb := doc.Form().Field("checkboxField").(*pdf.CheckboxField)
+	if err := cb.SetValue("on"); err != nil {
+		t.Errorf("SetValue('on') returned error: %v", err)
+	}
+	if !cb.Checked() {
+		t.Error("after SetValue('on'), Checked() = false")
+	}
+	if err := cb.SetValue("OFF"); err != nil {
+		t.Errorf("SetValue('OFF') returned error: %v", err)
+	}
+	if cb.Checked() {
+		t.Error("after SetValue('OFF'), Checked() = true")
+	}
+}
+
+func TestCheckboxFieldSetValueInvalidReturnsError(t *testing.T) {
+	doc, _ := pdf.Open(testFile(t))
+	cb := doc.Form().Field("checkboxField").(*pdf.CheckboxField)
+	if err := cb.SetValue("garbage"); err == nil {
+		t.Error("SetValue('garbage') returned nil error")
+	}
+}
+
+func TestButtonFieldSetValueReturnsError(t *testing.T) {
+	doc, _ := pdf.Open(testFile(t))
+	bf := doc.Form().Field("buttonField").(*pdf.ButtonField)
+	if err := bf.SetValue("anything"); err == nil {
+		t.Error("ButtonField.SetValue returned nil error; push button has no value")
+	}
+}
+
+func TestListBoxFieldSetSelectedMultiOnSingleSelectReturnsError(t *testing.T) {
+	doc, _ := pdf.Open(testFile(t))
+	lb := doc.Form().Field("listboxField").(*pdf.ListBoxField)
+	if lb.MultiSelect() {
+		t.Skip("listboxField is multi-select; this test requires single-select")
+	}
+	if err := lb.SetSelected(0, 1); err == nil {
+		t.Error("SetSelected(0,1) on single-select returned nil error")
+	}
+}
+
 func TestFormCyrillicRoundTrip(t *testing.T) {
 	loaded, err := pdf.Open(testFile(t))
 	if err != nil {

@@ -54,6 +54,14 @@
   "TestFormFillIntegration":            [["PdfWithAcroForm.pdf"]],
   "TestFormCyrillicRoundTrip":          [["PdfWithAcroForm.pdf"]],
 
+  "TestRadioButtonFieldSetValueInvalidReturnsError":         [["PdfWithAcroForm.pdf"]],
+  "TestRadioButtonFieldSetValueEmptyClearsSelection":        [["PdfWithAcroForm.pdf"]],
+  "TestComboBoxFieldSetValueInvalidNonEditableReturnsError": [["PdfWithAcroForm.pdf"]],
+  "TestCheckboxFieldSetValueAcceptsBooleanStrings":          [["PdfWithAcroForm.pdf"]],
+  "TestCheckboxFieldSetValueInvalidReturnsError":            [["PdfWithAcroForm.pdf"]],
+  "TestButtonFieldSetValueReturnsError":                     [["PdfWithAcroForm.pdf"]],
+  "TestListBoxFieldSetSelectedMultiOnSingleSelectReturnsError": [["PdfWithAcroForm.pdf"]],
+
   "TestMetadataCustomFieldsRoundTrip": [["4pages.pdf"]],
   "TestDocumentMetadataFields":        [["4pages.pdf"]],
   "TestDocumentMetadata":              [["4pages.pdf"]],
