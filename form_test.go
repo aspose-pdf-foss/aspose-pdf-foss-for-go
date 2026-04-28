@@ -1,6 +1,7 @@
 package asposepdf_test
 
 import (
+	"bytes"
 	"testing"
 
 	pdf "github.com/aspose/pdf-for-go"
@@ -76,5 +77,55 @@ func TestDocumentFormNonNilOnPlainPDF(t *testing.T) {
 	}
 	if form.Field("anything") != nil {
 		t.Error("plain document Field() returned non-nil")
+	}
+}
+
+func TestTextBoxFieldRead(t *testing.T) {
+	doc, err := pdf.Open(testFile(t))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	f := doc.Form().Field("textField")
+	if f == nil {
+		t.Fatal("Field('textField') returned nil")
+	}
+	tf, ok := f.(*pdf.TextBoxField)
+	if !ok {
+		t.Fatalf("Field('textField') = %T, want *pdf.TextBoxField", f)
+	}
+	if got := tf.Value(); got != "this is the text field" {
+		t.Errorf("Value() = %q, want %q", got, "this is the text field")
+	}
+	if tf.IsMultiline() {
+		t.Error("IsMultiline() = true; PdfWithAcroForm.pdf textField is single-line")
+	}
+	if tf.IsPassword() {
+		t.Error("IsPassword() = true; PdfWithAcroForm.pdf textField is plain")
+	}
+}
+
+func TestTextBoxFieldRoundTrip(t *testing.T) {
+	src := testFile(t)
+	doc, err := pdf.Open(src)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	tf := doc.Form().Field("textField").(*pdf.TextBoxField)
+	const newValue = "filled by go test"
+	if err := tf.SetValue(newValue); err != nil {
+		t.Fatalf("SetValue: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if _, err := doc.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	doc2, err := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	tf2 := doc2.Form().Field("textField").(*pdf.TextBoxField)
+	if got := tf2.Value(); got != newValue {
+		t.Errorf("after roundtrip Value() = %q, want %q", got, newValue)
 	}
 }

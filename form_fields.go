@@ -98,8 +98,30 @@ const (
 // TextBoxField is a single- or multi-line text input.
 type TextBoxField struct{ fieldBase }
 
-func (f *TextBoxField) Value() string           { return dictGetString(f.node.dict, "/V") }
-func (f *TextBoxField) SetValue(s string) error { return notYetImpl("TextBoxField.SetValue") }
+func (f *TextBoxField) Value() string {
+	return decodeFormString(f.node.dict["/V"])
+}
+
+func (f *TextBoxField) SetValue(s string) error {
+	f.node.dict["/V"] = encodeFormString(s)
+	noteFormMutated(f.node)
+	return nil
+}
+
+func (f *TextBoxField) MaxLen() int {
+	if v, ok := f.node.dict["/MaxLen"]; ok {
+		return toInt(v)
+	}
+	return 0
+}
+
+func (f *TextBoxField) IsMultiline() bool {
+	return f.node.ff&fieldFlagMultiline != 0
+}
+
+func (f *TextBoxField) IsPassword() bool {
+	return f.node.ff&fieldFlagPassword != 0
+}
 
 // CheckboxField is a checkbox with on/off state.
 type CheckboxField struct{ fieldBase }

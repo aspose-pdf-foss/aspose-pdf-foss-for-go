@@ -169,6 +169,77 @@ func walkField(objects map[int]*pdfObject, dict pdfDict, parentName, parentFT st
 	}
 }
 
+// encodeFormString encodes a Go string for storage as a PDF field value.
+// ASCII strings are stored as Latin-1 (PDFDocEncoding-compatible);
+// non-ASCII strings are encoded as UTF-16BE with the 0xFE 0xFF BOM,
+// per ISO 32000-1 §7.9.2.2.
+func encodeFormString(s string) string {
+	if isASCII(s) {
+		return s
+	}
+	out := make([]byte, 0, len(s)*2+2)
+	out = append(out, 0xFE, 0xFF)
+	for _, r := range s {
+		if r > 0xFFFF {
+			// Encode as surrogate pair.
+			r -= 0x10000
+			hi := 0xD800 + (r >> 10)
+			lo := 0xDC00 + (r & 0x3FF)
+			out = append(out, byte(hi>>8), byte(hi), byte(lo>>8), byte(lo))
+			continue
+		}
+		out = append(out, byte(r>>8), byte(r))
+	}
+	return string(out)
+}
+
+// decodeFormString decodes a PDF field value back into a Go string.
+// UTF-16BE with the 0xFE 0xFF BOM is detected; everything else is
+// returned as-is (Latin-1 / PDFDocEncoding bytes are valid Go strings).
+func decodeFormString(v pdfValue) string {
+	s, ok := v.(string)
+	if !ok {
+		if n, ok := v.(pdfName); ok {
+			return string(n)
+		}
+		return ""
+	}
+	if len(s) >= 2 && s[0] == 0xFE && s[1] == 0xFF {
+		body := s[2:]
+		var out []rune
+		for i := 0; i+1 < len(body); i += 2 {
+			r := rune(body[i])<<8 | rune(body[i+1])
+			if r >= 0xD800 && r <= 0xDBFF && i+3 < len(body) {
+				lo := rune(body[i+2])<<8 | rune(body[i+3])
+				if lo >= 0xDC00 && lo <= 0xDFFF {
+					r = 0x10000 + ((r-0xD800)<<10) + (lo - 0xDC00)
+					i += 2
+				}
+			}
+			out = append(out, r)
+		}
+		return string(out)
+	}
+	return s
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
+}
+
+// noteFormMutated is invoked from every field-value setter. It sets
+// /AcroForm/NeedAppearances=true so viewers regenerate the cached /AP
+// stream on display. The flag is implemented in Task 8; here we leave a
+// stub that the later task wires up.
+func noteFormMutated(n *fieldNode) {
+	// Task 8 fills this in.
+}
+
 func fieldFromNode(n *fieldNode) Field {
 	switch n.ft {
 	case "/Tx":

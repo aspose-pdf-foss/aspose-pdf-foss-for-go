@@ -39,6 +39,8 @@
   "TestFormFieldsCount":              [["PdfWithAcroForm.pdf"]],
   "TestFormFieldsTypes":              [["PdfWithAcroForm.pdf"]],
   "TestFormFieldAndFieldsSameInstance": [["PdfWithAcroForm.pdf"]],
+  "TestTextBoxFieldRead":             [["PdfWithAcroForm.pdf"]],
+  "TestTextBoxFieldRoundTrip":        [["PdfWithAcroForm.pdf"]],
 
   "TestMetadataCustomFieldsRoundTrip": [["4pages.pdf"]],
   "TestDocumentMetadataFields":        [["4pages.pdf"]],
