@@ -147,6 +147,17 @@ func TestEditInPlaceEncrypted(t *testing.T) {
 			}
 		}
 	}
+	// Aggregate volume check: total extracted bytes after edit should be
+	// at least 50% of the original (after subtracting the watermark text
+	// added on every page). Catches the failure mode where most content
+	// is silently lost but a single shared line survives the longestLine
+	// probe — e.g. on fixtures with many short repeated headers.
+	origTotal := totalLen(origPages)
+	afterTotal := totalLen(pagesAfter) - len(watermark)*len(pagesAfter)
+	if origTotal > 0 && afterTotal*2 < origTotal {
+		t.Errorf("aggregate text volume dropped sharply after edit: %d bytes after vs %d original (>50%% loss)",
+			afterTotal, origTotal)
+	}
 }
 
 // TestPermissionsSurviveRoundTrip pins the new Permissions() getter and
@@ -265,4 +276,12 @@ func longestLine(s string) string {
 		}
 	}
 	return longest
+}
+
+func totalLen(pages []string) int {
+	n := 0
+	for _, p := range pages {
+		n += len(p)
+	}
+	return n
 }

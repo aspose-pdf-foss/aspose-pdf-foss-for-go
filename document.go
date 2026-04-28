@@ -45,6 +45,16 @@ func OpenStream(r io.Reader) (*Document, error) {
 // unencrypted files. The password is tried as both user and owner
 // password; either unlocks the document for editing.
 //
+// Edit-in-place caveat: the supplied password is preserved on the
+// returned Document so a subsequent Save re-encrypts automatically.
+// Both user and owner password slots get set to the supplied value, so
+// the original two-password split is NOT preserved across Save: a file
+// originally locked with user="U" and owner="O", reopened with "O" and
+// re-saved, will have user=owner="O" — the original "U" no longer
+// works. To preserve a split, call SetPassword after open with both
+// known passwords; to drop encryption, call RemoveEncryption before
+// Save.
+//
 // Example:
 //
 //	doc, err := asposepdf.OpenWithPassword("locked.pdf", "secret")
@@ -60,6 +70,9 @@ func OpenWithPassword(path, password string) (*Document, error) {
 // (unencrypted) PDFs are also accepted — the password is silently
 // ignored — so this method is a safe drop-in for code that doesn't know
 // up front whether the input is encrypted.
+//
+// See OpenWithPassword for the edit-in-place password-preservation
+// caveat (both user and owner slots are set to the supplied password).
 func OpenStreamWithPassword(r io.Reader, password string) (*Document, error) {
 	return openStreamCore(r, &password)
 }
