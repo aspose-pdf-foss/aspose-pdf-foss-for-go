@@ -52,6 +52,7 @@
   "TestFormSetValueAutoNeedAppearances": [["PdfWithAcroForm.pdf"]],
   "TestFormManualNeedAppearancesToggle": [["PdfWithAcroForm.pdf"]],
   "TestFormFillIntegration":            [["PdfWithAcroForm.pdf"]],
+  "TestFormCyrillicRoundTrip":          [["PdfWithAcroForm.pdf"]],
 
   "TestMetadataCustomFieldsRoundTrip": [["4pages.pdf"]],
   "TestDocumentMetadataFields":        [["4pages.pdf"]],

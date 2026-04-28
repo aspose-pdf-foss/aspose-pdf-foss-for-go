@@ -337,13 +337,17 @@ func TestFormFillIntegration(t *testing.T) {
 	doc.Form().Field("checkboxField").(*pdf.CheckboxField).SetChecked(false)
 	rb := doc.Form().Field("radiobuttonField").(*pdf.RadioButtonField)
 	rb.Options()[0].SetSelected(true)
+	var comboTarget int = -1
 	cb := doc.Form().Field("comboboxField").(*pdf.ComboBoxField)
 	if len(cb.Options()) >= 2 {
-		cb.SetSelected(1)
+		comboTarget = 1
+		cb.SetSelected(comboTarget)
 	}
+	var listTarget int = -1
 	lb := doc.Form().Field("listboxField").(*pdf.ListBoxField)
 	if len(lb.Options()) >= 1 {
-		lb.SetSelected(0)
+		listTarget = 0
+		lb.SetSelected(listTarget)
 	}
 
 	var buf bytes.Buffer
@@ -365,20 +369,45 @@ func TestFormFillIntegration(t *testing.T) {
 	if !rb2.Options()[0].Selected() {
 		t.Error("radiobuttonField round-trip: option 0 not selected")
 	}
+	if comboTarget != -1 {
+		cb2 := doc2.Form().Field("comboboxField").(*pdf.ComboBoxField)
+		if got := cb2.Selected(); got != comboTarget {
+			t.Errorf("comboboxField round-trip: Selected() = %d, want %d", got, comboTarget)
+		}
+	}
+	if listTarget != -1 {
+		lb2 := doc2.Form().Field("listboxField").(*pdf.ListBoxField)
+		sel := lb2.Selected()
+		found := false
+		for _, idx := range sel {
+			if idx == listTarget {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("listboxField round-trip: Selected() = %v, want includes %d", sel, listTarget)
+		}
+	}
 }
 
 func TestFormCyrillicRoundTrip(t *testing.T) {
-	loaded, err := pdf.Open("testdata/PdfWithAcroForm.pdf")
+	loaded, err := pdf.Open(testFile(t))
 	if err != nil {
-		t.Skip("PdfWithAcroForm.pdf required")
+		t.Fatalf("Open: %v", err)
 	}
 	tf := loaded.Form().Field("textField").(*pdf.TextBoxField)
 	const cyrillic = "Привет, мир!"
 	tf.SetValue(cyrillic)
 
 	var buf bytes.Buffer
-	loaded.WriteTo(&buf)
-	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	if _, err := loaded.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	doc2, err := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("OpenStream: %v", err)
+	}
 	tf2 := doc2.Form().Field("textField").(*pdf.TextBoxField)
 	if got := tf2.Value(); got != cyrillic {
 		t.Errorf("Cyrillic round-trip: got %q, want %q", got, cyrillic)
