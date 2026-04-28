@@ -45,6 +45,7 @@ doc.Save("merged.pdf")
 - **Add text** — draw text on pages with font selection, alignment, word wrap, color, background, underline, strikethrough, rotation, and behind-content mode
 - **Text watermarks** — apply text watermarks to all or selected pages with full styling control
 - **Stream input** — open PDFs from any `io.Reader`, not just file paths
+- **Forms (AcroForm)** — read and fill all standard field types (text, checkbox, radio, combo box, list box, push button); non-ASCII values encoded as UTF-16BE; viewers regenerate appearances via auto `/NeedAppearances=true`
 
 ## API Reference
 
@@ -187,6 +188,44 @@ doc.Save("decrypted_copy.pdf")             // plaintext
 `Permissions` fields map to ISO 32000-1 §7.6.3.2 Table 22 bits 3, 4, 5, 6, 9, 10, 11, 12. The library encodes them with the Adobe convention (reserved bits 7-8 and 13-32 set high). Permissions are enforced by PDF viewers — the library itself is not a DRM mechanism.
 
 In `EncryptionOptions`, `Permissions` is a pointer so that `nil` (omitted) means "grant all", distinguishing the default from an explicit `&Permissions{}` which denies everything.
+
+### Forms (AcroForm)
+
+```go
+doc, _ := pdf.Open("template.pdf")
+
+// Iterate every form field
+for _, f := range doc.Form().Fields() {
+    fmt.Printf("%s = %q (type %v)\n", f.FullName(), f.Value(), pdf.FieldType(f))
+}
+
+// Set values by type
+text := doc.Form().Field("name").(*pdf.TextBoxField)
+text.SetValue("Jane Doe")
+
+check := doc.Form().Field("subscribe").(*pdf.CheckboxField)
+check.SetChecked(true)
+
+radio := doc.Form().Field("plan").(*pdf.RadioButtonField)
+radio.Options()[1].SetSelected(true)
+
+combo := doc.Form().Field("country").(*pdf.ComboBoxField)
+combo.SetSelected(0) // by index into combo.Options()
+
+list := doc.Form().Field("interests").(*pdf.ListBoxField)
+if list.MultiSelect() {
+    list.SetSelected(0, 2, 3)
+} else {
+    list.SetSelected(1)
+}
+
+// Save — viewers regenerate appearances on open via auto /NeedAppearances=true
+doc.Save("filled.pdf")
+```
+
+Field values containing non-ASCII characters (e.g. Cyrillic) are encoded as UTF-16BE with a BOM so any spec-conforming viewer reads them back correctly.
+
+Out of scope for this release: creating new fields programmatically (form-design epic), self-rendered `/AP` appearances (separate epic — `/NeedAppearances=true` covers most viewers), and form flattening.
 
 ### Validation
 

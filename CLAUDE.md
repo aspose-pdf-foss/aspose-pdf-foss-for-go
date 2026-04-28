@@ -110,6 +110,7 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `TextStyle` struct — Font, Size, Color, Background, HAlign, VAlign, LineSpacing, Underline, Strikethrough, Rotation, Behind
 - `(*Page).AddText(text, style, rect) error` — draws text inside a rectangle with word wrap, alignment, clipping, optional underline/strikethrough, rotation, and behind-content mode
 - `(*Document).AddTextWatermark(text, style, pageNums...) error` — applies a text watermark to all or selected pages using full-page rectangle from MediaBox
+- `(*Document).Form() *Form` — returns the document's AcroForm (always non-nil; empty form for documents without /AcroForm)
 
 **`page_labels.go`** — page label support
 - `(*Page).Label()` — formatted page label from the document's `/PageLabels` number tree; falls back to decimal page number if absent
@@ -129,6 +130,15 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - Decryption pipeline: `OpenWithPassword`/`OpenStreamWithPassword` parse `/Encrypt`, verify password against `/U` (user) or recover via `/O` (owner) using PDF Algorithm 7 reverse, derive document key, then decrypt every parsed object except `/Encrypt` itself in `rawDocument.getObject`. Stream `/Filter` chains are re-applied after RC4 decryption per PDF spec ordering (encrypt-after-filter)
 - `Permissions` struct — eight bool flags (AllowPrint, AllowModify, AllowCopy, AllowAnnotations, AllowFormFill, AllowAccessibility, AllowAssembly, AllowPrintHighRes); zero value denies everything. Adobe-convention bit packing per ISO 32000-1 §7.6.3.2 Table 22 with reserved bits 7-8 and 13-32 set high
 - `EncryptionOptions` struct — unified encryption configuration: UserPassword, OwnerPassword (empty → defaults to UserPassword), Permissions *Permissions (nil → grant all). Consumed by `(*Document).SetEncryption`
+
+**`form.go` / `form_fields.go`**
+- `Form` — AcroForm view; `Fields() []Field`, `Field(name string) Field`, `HasField(name string) bool`, `NeedAppearances() bool`, `SetNeedAppearances(v bool)`
+- `Field` interface — `PartialName() string`, `FullName() string`, `Value() string`, `SetValue(s string) error`, `IsReadOnly() bool`, `IsRequired() bool`, `PageIndex() int`, `Rect() Rectangle`
+- Concrete types: `TextBoxField`, `CheckboxField`, `RadioButtonField` + `RadioButtonOptionField`, `ComboBoxField`, `ListBoxField`, `ButtonField` (push button)
+- `ChoiceOption` — option data for ComboBox / ListBox: `Value`, `Export`
+- `FormFieldType` enum + `FieldType(f Field) FormFieldType` convenience helper
+- Field values are encoded UTF-16BE-with-BOM when non-ASCII, Latin-1 / PDFDocEncoding otherwise (per ISO 32000-1 §7.9.2.2)
+- Any value-mutating call auto-sets `/AcroForm/NeedAppearances=true` so viewers regenerate cached `/AP` on display
 
 **`validate.go`**
 - `Validate(inputPath)` — checks a PDF for structural integrity; returns `*ValidationReport` with a `Valid` flag and a list of `ValidationIssue` (code + message)
