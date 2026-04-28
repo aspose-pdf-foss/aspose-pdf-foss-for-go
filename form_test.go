@@ -204,3 +204,40 @@ func TestRadioButtonFieldRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestComboBoxFieldRead(t *testing.T) {
+	doc, _ := pdf.Open(testFile(t))
+	cb := doc.Form().Field("comboboxField").(*pdf.ComboBoxField)
+	opts := cb.Options()
+	if len(opts) == 0 {
+		t.Fatal("comboboxField has zero options")
+	}
+	idx := cb.Selected()
+	if idx < 0 || idx >= len(opts) {
+		t.Errorf("Selected() = %d out of range [0,%d)", idx, len(opts))
+	}
+}
+
+func TestComboBoxFieldRoundTrip(t *testing.T) {
+	src := testFile(t)
+	doc, _ := pdf.Open(src)
+	cb := doc.Form().Field("comboboxField").(*pdf.ComboBoxField)
+	opts := cb.Options()
+	if len(opts) < 2 {
+		t.Skip("need at least 2 options")
+	}
+	target := 1
+	if cb.Selected() == 1 {
+		target = 0
+	}
+	if err := cb.SetSelected(target); err != nil {
+		t.Fatalf("SetSelected: %v", err)
+	}
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	cb2 := doc2.Form().Field("comboboxField").(*pdf.ComboBoxField)
+	if cb2.Selected() != target {
+		t.Errorf("after roundtrip Selected() = %d, want %d", cb2.Selected(), target)
+	}
+}

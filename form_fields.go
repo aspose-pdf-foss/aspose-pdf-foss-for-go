@@ -85,14 +85,15 @@ func (b *fieldBase) Rect() Rectangle {
 
 // /Ff bit positions per ISO 32000-1 Table 227.
 const (
-	fieldFlagReadOnly   = 1 << 0  // bit 1
-	fieldFlagRequired   = 1 << 1  // bit 2
-	fieldFlagPushbutton = 1 << 16 // bit 17
-	fieldFlagRadio      = 1 << 15 // bit 16
-	fieldFlagCombo      = 1 << 17 // bit 18
+	fieldFlagReadOnly    = 1 << 0  // bit 1
+	fieldFlagRequired    = 1 << 1  // bit 2
+	fieldFlagPushbutton  = 1 << 16 // bit 17
+	fieldFlagRadio       = 1 << 15 // bit 16
+	fieldFlagCombo       = 1 << 17 // bit 18
+	fieldFlagEdit        = 1 << 18 // bit 19; /Ch combo "Edit" flag
 	fieldFlagMultiSelect = 1 << 21 // bit 22
-	fieldFlagMultiline  = 1 << 12 // bit 13
-	fieldFlagPassword   = 1 << 13 // bit 14
+	fieldFlagMultiline   = 1 << 12 // bit 13
+	fieldFlagPassword    = 1 << 13 // bit 14
 )
 
 // TextBoxField is a single- or multi-line text input.
@@ -293,11 +294,87 @@ func (o *RadioButtonOptionField) SetSelected(v bool) {
 	noteFormMutated(o.parent.node)
 }
 
+// ChoiceOption is one option of a ComboBoxField or ListBoxField.
+type ChoiceOption struct {
+	Value  string // displayed text
+	Export string // export value when distinct from Value
+}
+
 // ComboBoxField is a single-select dropdown choice field.
 type ComboBoxField struct{ fieldBase }
 
-func (f *ComboBoxField) Value() string           { return dictGetString(f.node.dict, "/V") }
-func (f *ComboBoxField) SetValue(s string) error { return notYetImpl("ComboBoxField.SetValue") }
+func (f *ComboBoxField) Value() string {
+	return decodeFormString(f.node.dict["/V"])
+}
+
+func (f *ComboBoxField) SetValue(s string) error {
+	for i, opt := range f.Options() {
+		if opt.Value == s || (opt.Export != "" && opt.Export == s) {
+			return f.SetSelected(i)
+		}
+	}
+	if f.node.ff&fieldFlagEdit != 0 {
+		// Edit mode: arbitrary text is allowed.
+		f.node.dict["/V"] = encodeFormString(s)
+		noteFormMutated(f.node)
+		return nil
+	}
+	return fmt.Errorf("ComboBoxField.SetValue(%q): no matching option and field is not editable", s)
+}
+
+func (f *ComboBoxField) Options() []ChoiceOption {
+	return readChoiceOptions(f.node.dict["/Opt"])
+}
+
+func (f *ComboBoxField) Selected() int {
+	current := decodeFormString(f.node.dict["/V"])
+	if current == "" {
+		return -1
+	}
+	for i, opt := range f.Options() {
+		if opt.Value == current || opt.Export == current {
+			return i
+		}
+	}
+	return -1
+}
+
+func (f *ComboBoxField) SetSelected(index int) error {
+	opts := f.Options()
+	if index < 0 || index >= len(opts) {
+		return fmt.Errorf("ComboBoxField.SetSelected(%d): out of range [0,%d)", index, len(opts))
+	}
+	value := opts[index].Value
+	if opts[index].Export != "" {
+		value = opts[index].Export
+	}
+	f.node.dict["/V"] = encodeFormString(value)
+	noteFormMutated(f.node)
+	return nil
+}
+
+// readChoiceOptions parses /Opt — either an array of strings (each is
+// the display value) or an array of two-element arrays [export, display].
+func readChoiceOptions(v pdfValue) []ChoiceOption {
+	arr, ok := v.(pdfArray)
+	if !ok {
+		return nil
+	}
+	out := make([]ChoiceOption, 0, len(arr))
+	for _, item := range arr {
+		switch x := item.(type) {
+		case string:
+			out = append(out, ChoiceOption{Value: x})
+		case pdfArray:
+			if len(x) >= 2 {
+				export, _ := x[0].(string)
+				display, _ := x[1].(string)
+				out = append(out, ChoiceOption{Value: display, Export: export})
+			}
+		}
+	}
+	return out
+}
 
 // ListBoxField is a single- or multi-select list choice field.
 type ListBoxField struct{ fieldBase }
