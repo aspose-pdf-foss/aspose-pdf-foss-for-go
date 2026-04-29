@@ -503,6 +503,47 @@ func (f *ListBoxField) SetSelected(indices ...int) error {
 	return nil
 }
 
+// setFlag sets or clears a /Ff bit on the field's dict. Updates both
+// node.ff (the cached value) and dict["/Ff"] (the persisted value).
+func setFlag(node *fieldNode, bit int, on bool) {
+	if on {
+		node.ff |= bit
+	} else {
+		node.ff &^= bit
+	}
+	if node.ff == 0 {
+		delete(node.dict, "/Ff")
+	} else {
+		node.dict["/Ff"] = node.ff
+	}
+	if node.form != nil {
+		node.form.noteFormMutatedInForm()
+	}
+}
+
+func (f *TextBoxField) SetReadOnly(v bool)  { setFlag(f.node, fieldFlagReadOnly, v) }
+func (f *TextBoxField) SetRequired(v bool)  { setFlag(f.node, fieldFlagRequired, v) }
+func (f *TextBoxField) SetMultiline(v bool) { setFlag(f.node, fieldFlagMultiline, v) }
+func (f *TextBoxField) SetPassword(v bool)  { setFlag(f.node, fieldFlagPassword, v) }
+
+// SetMaxLen sets the maximum number of characters. 0 removes the limit.
+func (f *TextBoxField) SetMaxLen(n int) {
+	if n <= 0 {
+		delete(f.node.dict, "/MaxLen")
+	} else {
+		f.node.dict["/MaxLen"] = n
+	}
+	if f.node.form != nil {
+		f.node.form.noteFormMutatedInForm()
+	}
+}
+
+func (f *CheckboxField) SetReadOnly(v bool)    { setFlag(f.node, fieldFlagReadOnly, v) }
+func (f *CheckboxField) SetRequired(v bool)    { setFlag(f.node, fieldFlagRequired, v) }
+func (f *RadioButtonField) SetReadOnly(v bool) { setFlag(f.node, fieldFlagReadOnly, v) }
+func (f *RadioButtonField) SetRequired(v bool) { setFlag(f.node, fieldFlagRequired, v) }
+func (f *ButtonField) SetReadOnly(v bool)      { setFlag(f.node, fieldFlagReadOnly, v) }
+
 // ButtonField is a push button — action only, no value semantics.
 type ButtonField struct{ fieldBase }
 

@@ -276,6 +276,82 @@ func TestFormRemoveFieldNotFound(t *testing.T) {
 	}
 }
 
+func TestTextBoxFieldSetMaxLenRoundTrip(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	tf, _ := doc.Form().AddTextField(1, pdf.Rectangle{LLX: 50, LLY: 700, URX: 545, URY: 730}, "x")
+	tf.SetMaxLen(100)
+	var buf bytes.Buffer
+	if _, err := doc.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	doc2, err := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("OpenStream: %v", err)
+	}
+	tf2 := doc2.Form().Field("x").(*pdf.TextBoxField)
+	if got := tf2.MaxLen(); got != 100 {
+		t.Errorf("MaxLen = %d, want 100", got)
+	}
+}
+
+func TestTextBoxFieldSetMultilineRoundTrip(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	tf, _ := doc.Form().AddTextField(1, pdf.Rectangle{LLX: 50, LLY: 700, URX: 545, URY: 730}, "x")
+	tf.SetMultiline(true)
+	var buf bytes.Buffer
+	if _, err := doc.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	doc2, err := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("OpenStream: %v", err)
+	}
+	tf2 := doc2.Form().Field("x").(*pdf.TextBoxField)
+	if !tf2.IsMultiline() {
+		t.Error("IsMultiline = false after SetMultiline(true) + roundtrip")
+	}
+}
+
+func TestTextBoxFieldSetPasswordRoundTrip(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	tf, _ := doc.Form().AddTextField(1, pdf.Rectangle{LLX: 50, LLY: 700, URX: 545, URY: 730}, "x")
+	tf.SetPassword(true)
+	var buf bytes.Buffer
+	if _, err := doc.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	doc2, err := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("OpenStream: %v", err)
+	}
+	tf2 := doc2.Form().Field("x").(*pdf.TextBoxField)
+	if !tf2.IsPassword() {
+		t.Error("IsPassword = false after SetPassword(true)")
+	}
+}
+
+func TestFieldSetReadOnlyRequiredRoundTrip(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	tf, _ := doc.Form().AddTextField(1, pdf.Rectangle{LLX: 50, LLY: 700, URX: 545, URY: 730}, "x")
+	tf.SetReadOnly(true)
+	tf.SetRequired(true)
+	var buf bytes.Buffer
+	if _, err := doc.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	doc2, err := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("OpenStream: %v", err)
+	}
+	tf2 := doc2.Form().Field("x").(*pdf.TextBoxField)
+	if !tf2.IsReadOnly() {
+		t.Error("IsReadOnly = false after SetReadOnly(true)")
+	}
+	if !tf2.IsRequired() {
+		t.Error("IsRequired = false after SetRequired(true)")
+	}
+}
+
 func TestFormRemoveFieldRadioCascade(t *testing.T) {
 	doc := pdf.NewDocument(595, 842)
 	if err := doc.AddBlankPage(595, 842); err != nil {
