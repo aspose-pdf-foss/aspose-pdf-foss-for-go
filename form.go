@@ -550,6 +550,46 @@ func (f *Form) AddComboBox(pageNum int, rect Rectangle, name string, options []C
 	return f.cache[name].(*ComboBoxField), nil
 }
 
+// AddListBox creates a single-select list field. SetMultiSelect(true)
+// on the returned handle enables multi-selection (bit 22).
+func (f *Form) AddListBox(pageNum int, rect Rectangle, name string, options []ChoiceOption) (*ListBoxField, error) {
+	if err := f.validateNewField(pageNum, name); err != nil {
+		return nil, err
+	}
+	page, err := f.doc.Page(pageNum)
+	if err != nil {
+		return nil, err
+	}
+	helvName, err := f.ensureFontHelv()
+	if err != nil {
+		return nil, err
+	}
+
+	dict := pdfDict{
+		"/Type":    pdfName("/Annot"),
+		"/Subtype": pdfName("/Widget"),
+		"/FT":      pdfName("/Ch"),
+		"/T":       name,
+		// /Ff is 0 — neither Combo (bit 18) nor MultiSelect (bit 22) set.
+		"/Opt":  choiceOptionsToPDFArray(options),
+		"/DA":   "0 g /" + helvName + " 12 Tf",
+		"/Rect": rectToPDFArray(rect),
+		"/P":    pdfRef{Num: page.pageObj().Num},
+	}
+
+	objID := f.doc.nextID
+	f.doc.nextID++
+	f.doc.objects[objID] = &pdfObject{Num: objID, Value: dict}
+	ref := pdfRef{Num: objID}
+
+	f.appendToFields(ref)
+	appendWidgetToPage(page.pageObj(), ref)
+	f.rebuildFieldCache()
+	f.noteFormMutatedInForm()
+
+	return f.cache[name].(*ListBoxField), nil
+}
+
 // choiceOptionsToPDFArray converts a slice of ChoiceOption to a /Opt
 // array. Each element is either a single string (Value-only) or a
 // two-element array [Export, Value] when Export is non-empty.

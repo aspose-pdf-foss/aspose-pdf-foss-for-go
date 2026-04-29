@@ -89,3 +89,36 @@ func TestFormAddComboBoxRoundTrip(t *testing.T) {
 		t.Errorf("Selected = %d, want 1", got)
 	}
 }
+
+func TestFormAddListBoxRoundTrip(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	options := []pdf.ChoiceOption{
+		{Value: "Red"},
+		{Value: "Green"},
+		{Value: "Blue"},
+	}
+	lb, err := doc.Form().AddListBox(1, pdf.Rectangle{LLX: 50, LLY: 500, URX: 250, URY: 580}, "color", options)
+	if err != nil {
+		t.Fatalf("AddListBox: %v", err)
+	}
+	if err := lb.SetSelected(0); err != nil {
+		t.Fatalf("SetSelected: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if _, err := doc.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	doc2, err := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("OpenStream: %v", err)
+	}
+	lb2 := doc2.Form().Field("color").(*pdf.ListBoxField)
+	if got := len(lb2.Options()); got != 3 {
+		t.Errorf("Options count = %d, want 3", got)
+	}
+	sel := lb2.Selected()
+	if len(sel) != 1 || sel[0] != 0 {
+		t.Errorf("Selected = %v, want [0]", sel)
+	}
+}
