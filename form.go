@@ -1,5 +1,7 @@
 package asposepdf
 
+import "fmt"
+
 // Form is the document's AcroForm view. Always non-nil — for documents
 // without an /AcroForm dict, Form is empty (no fields, no flags). Field
 // instances returned from Form are live handles over the underlying
@@ -271,13 +273,15 @@ func (f *Form) SetNeedAppearances(v bool) {
 }
 
 // ensureRoot lazily creates an /AcroForm dict on the document catalog
-// if absent. Called from setters that need a place to store flags.
+// if absent. Also creates the catalog itself if the document is new
+// (NewDocument doesn't initialise one). Called from setters that need
+// a place to store flags.
 func (f *Form) ensureRoot() {
 	if f.root != nil {
 		return
 	}
 	if f.doc.catalog == nil {
-		return
+		f.doc.catalog = pdfDict{}
 	}
 	root := pdfDict{"/Fields": pdfArray{}}
 	f.doc.catalog["/AcroForm"] = root
@@ -293,6 +297,140 @@ func (f *Form) noteFormMutatedInForm() {
 	if f.root != nil {
 		f.root["/NeedAppearances"] = true
 	}
+}
+
+// AddTextField creates a single-line text input on pageNum with the
+// given rectangle and field name, auto-creating /AcroForm and the
+// default Helvetica font resource if needed. Returns the live
+// *TextBoxField handle. Errors on duplicate name, invalid pageNum,
+// or empty name.
+func (f *Form) AddTextField(pageNum int, rect Rectangle, name string) (*TextBoxField, error) {
+	if err := f.validateNewField(pageNum, name); err != nil {
+		return nil, err
+	}
+	page, err := f.doc.Page(pageNum)
+	if err != nil {
+		return nil, err
+	}
+
+	helvName, err := f.ensureFontHelv()
+	if err != nil {
+		return nil, err
+	}
+
+	dict := pdfDict{
+		"/Type":    pdfName("/Annot"),
+		"/Subtype": pdfName("/Widget"),
+		"/FT":      pdfName("/Tx"),
+		"/T":       name,
+		"/V":       "",
+		"/DA":      "0 g /" + helvName + " 12 Tf",
+		"/Rect":    rectToPDFArray(rect),
+		"/P":       pdfRef{Num: page.pageObj().Num},
+	}
+
+	objID := f.doc.nextID
+	f.doc.nextID++
+	f.doc.objects[objID] = &pdfObject{Num: objID, Value: dict}
+	ref := pdfRef{Num: objID}
+
+	f.appendToFields(ref)
+	appendWidgetToPage(page.pageObj(), ref)
+
+	f.rebuildFieldCache()
+	f.noteFormMutatedInForm()
+
+	return f.cache[name].(*TextBoxField), nil
+}
+
+// validateNewField checks the common preconditions for any AddXxx call.
+func (f *Form) validateNewField(pageNum int, name string) error {
+	if name == "" {
+		return fmt.Errorf("form field name is empty")
+	}
+	if pageNum < 1 || pageNum > f.doc.PageCount() {
+		return fmt.Errorf("pageNum %d out of range [1,%d]", pageNum, f.doc.PageCount())
+	}
+	if f.HasField(name) {
+		return fmt.Errorf("field with name %q already exists", name)
+	}
+	return nil
+}
+
+// appendToFields appends a ref to /AcroForm/Fields, creating the array
+// if absent.
+func (f *Form) appendToFields(ref pdfRef) {
+	f.ensureRoot()
+	arr, _ := f.root["/Fields"].(pdfArray)
+	arr = append(arr, ref)
+	f.root["/Fields"] = arr
+}
+
+// appendWidgetToPage appends a widget ref to a page's /Annots, creating
+// the array if absent.
+func appendWidgetToPage(pageObj *pdfObject, widgetRef pdfRef) {
+	pageDict, _ := pageObj.Value.(pdfDict)
+	if pageDict == nil {
+		return
+	}
+	arr, _ := pageDict["/Annots"].(pdfArray)
+	arr = append(arr, widgetRef)
+	pageDict["/Annots"] = arr
+}
+
+// rebuildFieldCache regenerates Form.fieldsList and Form.cache from the
+// current /AcroForm/Fields. Called after any structural change so live
+// handles returned from prior calls remain canonical.
+func (f *Form) rebuildFieldCache() {
+	if f.root == nil {
+		f.leaves = nil
+		f.fieldsList = nil
+		f.cache = nil
+		return
+	}
+	f.leaves = walkAcroForm(f, f.doc.objects, f.root)
+	f.fieldsList = make([]Field, len(f.leaves))
+	f.cache = make(map[string]Field, len(f.leaves))
+	for i, n := range f.leaves {
+		field := fieldFromNode(n)
+		f.fieldsList[i] = field
+		f.cache[n.fullName] = field
+	}
+}
+
+// ensureFontHelv registers a Helvetica font resource under /AcroForm/DR/
+// Font/Helv and returns its resource name ("Helv"). Idempotent.
+func (f *Form) ensureFontHelv() (string, error) {
+	f.ensureRoot()
+	dr, _ := f.root["/DR"].(pdfDict)
+	if dr == nil {
+		dr = pdfDict{}
+		f.root["/DR"] = dr
+	}
+	fonts, _ := dr["/Font"].(pdfDict)
+	if fonts == nil {
+		fonts = pdfDict{}
+		dr["/Font"] = fonts
+	}
+	if _, ok := fonts["/Helv"]; ok {
+		return "Helv", nil
+	}
+	fontDict := pdfDict{
+		"/Type":     pdfName("/Font"),
+		"/Subtype":  pdfName("/Type1"),
+		"/BaseFont": pdfName("/Helvetica"),
+		"/Encoding": pdfName("/WinAnsiEncoding"),
+	}
+	id := f.doc.nextID
+	f.doc.nextID++
+	f.doc.objects[id] = &pdfObject{Num: id, Value: fontDict}
+	fonts["/Helv"] = pdfRef{Num: id}
+	return "Helv", nil
+}
+
+// rectToPDFArray converts a Rectangle to a /Rect pdfArray.
+func rectToPDFArray(r Rectangle) pdfArray {
+	return pdfArray{r.LLX, r.LLY, r.URX, r.URY}
 }
 
 func fieldFromNode(n *fieldNode) Field {
