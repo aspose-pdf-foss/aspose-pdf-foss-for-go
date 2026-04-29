@@ -552,3 +552,73 @@ func (f *ButtonField) SetValue(s string) error { return errPushButtonHasNoValue 
 
 var errPushButtonHasNoValue = fmt.Errorf("push button field has no value")
 
+// SetEditable toggles bit 19 (/Ff Edit). When true, the combo accepts
+// arbitrary user-typed text instead of restricting to /Opt entries.
+func (f *ComboBoxField) SetEditable(v bool) { setFlag(f.node, fieldFlagEdit, v) }
+
+// AddOption appends a ChoiceOption to /Opt.
+func (f *ComboBoxField) AddOption(o ChoiceOption) {
+	arr := f.node.dict["/Opt"]
+	pdfArr, _ := arr.(pdfArray)
+	pdfArr = append(pdfArr, choiceOptionToPDFValue(o))
+	f.node.dict["/Opt"] = pdfArr
+	if f.node.form != nil {
+		f.node.form.noteFormMutatedInForm()
+	}
+}
+
+// RemoveOption removes the option at index. Errors on out-of-range.
+func (f *ComboBoxField) RemoveOption(index int) error {
+	pdfArr, _ := f.node.dict["/Opt"].(pdfArray)
+	if index < 0 || index >= len(pdfArr) {
+		return fmt.Errorf("ComboBoxField.RemoveOption(%d): out of range [0,%d)", index, len(pdfArr))
+	}
+	f.node.dict["/Opt"] = append(pdfArr[:index], pdfArr[index+1:]...)
+	if f.node.form != nil {
+		f.node.form.noteFormMutatedInForm()
+	}
+	return nil
+}
+
+// SetMultiSelect toggles bit 22 (/Ff MultiSelect) on a ListBoxField.
+func (f *ListBoxField) SetMultiSelect(v bool) { setFlag(f.node, fieldFlagMultiSelect, v) }
+
+// AddOption appends a ChoiceOption to /Opt.
+func (f *ListBoxField) AddOption(o ChoiceOption) {
+	arr := f.node.dict["/Opt"]
+	pdfArr, _ := arr.(pdfArray)
+	pdfArr = append(pdfArr, choiceOptionToPDFValue(o))
+	f.node.dict["/Opt"] = pdfArr
+	if f.node.form != nil {
+		f.node.form.noteFormMutatedInForm()
+	}
+}
+
+// RemoveOption removes the option at index. Errors on out-of-range.
+func (f *ListBoxField) RemoveOption(index int) error {
+	pdfArr, _ := f.node.dict["/Opt"].(pdfArray)
+	if index < 0 || index >= len(pdfArr) {
+		return fmt.Errorf("ListBoxField.RemoveOption(%d): out of range [0,%d)", index, len(pdfArr))
+	}
+	f.node.dict["/Opt"] = append(pdfArr[:index], pdfArr[index+1:]...)
+	if f.node.form != nil {
+		f.node.form.noteFormMutatedInForm()
+	}
+	return nil
+}
+
+// choiceOptionToPDFValue is the per-option converter. Mirrors what
+// choiceOptionsToPDFArray does for an entire slice.
+func choiceOptionToPDFValue(o ChoiceOption) pdfValue {
+	if o.Export != "" {
+		return pdfArray{o.Export, o.Value}
+	}
+	return o.Value
+}
+
+// SetReadOnly/SetRequired on choice types.
+func (f *ComboBoxField) SetReadOnly(v bool) { setFlag(f.node, fieldFlagReadOnly, v) }
+func (f *ComboBoxField) SetRequired(v bool) { setFlag(f.node, fieldFlagRequired, v) }
+func (f *ListBoxField) SetReadOnly(v bool)  { setFlag(f.node, fieldFlagReadOnly, v) }
+func (f *ListBoxField) SetRequired(v bool)  { setFlag(f.node, fieldFlagRequired, v) }
+

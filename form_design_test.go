@@ -352,6 +352,53 @@ func TestFieldSetReadOnlyRequiredRoundTrip(t *testing.T) {
 	}
 }
 
+func TestComboBoxFieldSetEditableRoundTrip(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	cb, _ := doc.Form().AddComboBox(1, pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 625}, "x", []pdf.ChoiceOption{{Value: "a"}})
+	cb.SetEditable(true)
+	if err := cb.SetValue("free text"); err != nil {
+		t.Errorf("editable combo SetValue failed: %v", err)
+	}
+}
+
+func TestComboBoxFieldAddRemoveOptionRoundTrip(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	cb, _ := doc.Form().AddComboBox(1, pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 625}, "x", []pdf.ChoiceOption{{Value: "a"}, {Value: "b"}})
+	cb.AddOption(pdf.ChoiceOption{Value: "c"})
+	if err := cb.RemoveOption(0); err != nil {
+		t.Fatalf("RemoveOption: %v", err)
+	}
+	opts := cb.Options()
+	if len(opts) != 2 || opts[0].Value != "b" || opts[1].Value != "c" {
+		t.Errorf("Options after Add+Remove = %v, want [{b} {c}]", opts)
+	}
+}
+
+func TestListBoxFieldSetMultiSelectRoundTrip(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	lb, _ := doc.Form().AddListBox(1, pdf.Rectangle{LLX: 50, LLY: 500, URX: 250, URY: 580}, "x", []pdf.ChoiceOption{{Value: "a"}, {Value: "b"}, {Value: "c"}})
+	lb.SetMultiSelect(true)
+	if err := lb.SetSelected(0, 2); err != nil {
+		t.Fatalf("SetSelected multi after enabling multi: %v", err)
+	}
+	var buf bytes.Buffer
+	if _, err := doc.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	doc2, err := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("OpenStream: %v", err)
+	}
+	lb2 := doc2.Form().Field("x").(*pdf.ListBoxField)
+	if !lb2.MultiSelect() {
+		t.Error("MultiSelect false after SetMultiSelect(true) + roundtrip")
+	}
+	sel := lb2.Selected()
+	if len(sel) != 2 {
+		t.Errorf("Selected count = %d, want 2", len(sel))
+	}
+}
+
 func TestFormRemoveFieldRadioCascade(t *testing.T) {
 	doc := pdf.NewDocument(595, 842)
 	if err := doc.AddBlankPage(595, 842); err != nil {
