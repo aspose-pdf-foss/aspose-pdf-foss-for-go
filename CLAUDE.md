@@ -139,6 +139,10 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `FormFieldType` enum + `FieldType(f Field) FormFieldType` convenience helper
 - Field values are encoded UTF-16BE-with-BOM when non-ASCII, Latin-1 / PDFDocEncoding otherwise (per ISO 32000-1 §7.9.2.2)
 - Any value-mutating call auto-sets `/AcroForm/NeedAppearances=true` so viewers regenerate cached `/AP` on display
+- `(*Form).AddTextField/AddCheckbox/AddRadioGroup/AddComboBox/AddListBox/AddPushButton` — programmatic field creation; auto-creates /AcroForm and /AcroForm/DR/Font/Helv on first call; combined field+widget dict for single-widget fields, parent + kids for radio groups
+- `(*Form).RemoveField(name) bool` — removes field plus all its widgets from /AcroForm/Fields and per-page /Annots
+- Per-type structural mutators: `SetReadOnly`, `SetRequired` on every type; `TextBoxField.{SetMaxLen,SetMultiline,SetPassword}`; `ComboBoxField.{SetEditable,AddOption,RemoveOption}`; `ListBoxField.{SetMultiSelect,AddOption,RemoveOption}`
+- `RadioItem` struct — `PageNum`, `Rect`, `Export` for cross-page radio groups
 
 **`validate.go`**
 - `Validate(inputPath)` — checks a PDF for structural integrity; returns `*ValidationReport` with a `Valid` flag and a list of `ValidationIssue` (code + message)

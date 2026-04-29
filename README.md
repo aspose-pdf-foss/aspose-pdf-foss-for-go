@@ -45,7 +45,7 @@ doc.Save("merged.pdf")
 - **Add text** — draw text on pages with font selection, alignment, word wrap, color, background, underline, strikethrough, rotation, and behind-content mode
 - **Text watermarks** — apply text watermarks to all or selected pages with full styling control
 - **Stream input** — open PDFs from any `io.Reader`, not just file paths
-- **Forms (AcroForm)** — read and fill all standard field types (text, checkbox, radio, combo box, list box, push button); non-ASCII values encoded as UTF-16BE; viewers regenerate appearances via auto `/NeedAppearances=true`
+- **Forms (AcroForm)** — read, fill, and build from scratch all standard field types (text, checkbox, radio, combo box, list box, push button); programmatic field creation with `AddTextField`/`AddCheckbox`/`AddRadioGroup`/`AddComboBox`/`AddListBox`/`AddPushButton`; `RemoveField`; non-ASCII values encoded as UTF-16BE; viewers regenerate appearances via auto `/NeedAppearances=true`
 
 ## API Reference
 
@@ -225,7 +225,42 @@ doc.Save("filled.pdf")
 
 Field values containing non-ASCII characters (e.g. Cyrillic) are encoded as UTF-16BE with a BOM so any spec-conforming viewer reads them back correctly.
 
-Out of scope for this release: creating new fields programmatically (form-design epic), self-rendered `/AP` appearances (separate epic — `/NeedAppearances=true` covers most viewers), and form flattening.
+#### Building forms from scratch
+
+```go
+doc := pdf.NewDocument(595, 842)
+form := doc.Form()
+
+// Single-widget fields
+tf, _ := form.AddTextField(1, pdf.Rectangle{LLX: 50, LLY: 700, URX: 545, URY: 725}, "name")
+tf.SetMaxLen(50)
+tf.SetValue("Jane Doe")
+
+cb, _ := form.AddCheckbox(1, pdf.Rectangle{LLX: 50, LLY: 660, URX: 70, URY: 680}, "subscribe")
+cb.SetChecked(true)
+
+combo, _ := form.AddComboBox(1, pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 625}, "country",
+    []pdf.ChoiceOption{{Value: "USA"}, {Value: "Canada"}})
+combo.SetSelected(0)
+
+// Radio group: widgets can span multiple pages
+rb, _ := form.AddRadioGroup("plan", []pdf.RadioItem{
+    {PageNum: 1, Rect: pdf.Rectangle{LLX: 50, LLY: 540, URX: 70, URY: 560}, Export: "basic"},
+    {PageNum: 1, Rect: pdf.Rectangle{LLX: 50, LLY: 510, URX: 70, URY: 530}, Export: "premium"},
+})
+rb.Options()[0].SetSelected(true)
+
+form.AddPushButton(1, pdf.Rectangle{LLX: 50, LLY: 460, URX: 200, URY: 490}, "submit", "Submit")
+
+// Remove a field by name
+form.RemoveField("subscribe")
+
+doc.Save("form.pdf")
+```
+
+`/AcroForm/NeedAppearances` is auto-set on every Add or structural mutation, so any standards-compliant viewer regenerates the field appearances at display time.
+
+Out of scope for this release: self-rendered `/AP` appearances (separate epic — `/NeedAppearances=true` covers most viewers), and form flattening.
 
 ### Validation
 
