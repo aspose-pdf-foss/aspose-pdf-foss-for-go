@@ -431,3 +431,74 @@ func TestFormRemoveFieldRadioCascade(t *testing.T) {
 		t.Error("HasField returned true after Remove + roundtrip")
 	}
 }
+
+func TestFormAddXxxAutoSetsNeedAppearances(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	if _, err := doc.Form().AddTextField(1, pdf.Rectangle{LLX: 50, LLY: 700, URX: 545, URY: 730}, "x"); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if !doc.Form().NeedAppearances() {
+		t.Error("/NeedAppearances not auto-set after AddTextField")
+	}
+}
+
+func TestFormBuildFromScratchIntegration(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	form := doc.Form()
+
+	tf, _ := form.AddTextField(1, pdf.Rectangle{LLX: 50, LLY: 720, URX: 545, URY: 745}, "name")
+	tf.SetValue("Jane Doe")
+	tf.SetMaxLen(50)
+
+	cb, _ := form.AddCheckbox(1, pdf.Rectangle{LLX: 50, LLY: 685, URX: 70, URY: 705}, "subscribe")
+	cb.SetChecked(true)
+
+	rb, _ := form.AddRadioGroup("plan", []pdf.RadioItem{
+		{PageNum: 1, Rect: pdf.Rectangle{LLX: 50, LLY: 645, URX: 70, URY: 665}, Export: "basic"},
+		{PageNum: 1, Rect: pdf.Rectangle{LLX: 50, LLY: 615, URX: 70, URY: 635}, Export: "premium"},
+	})
+	rb.Options()[1].SetSelected(true)
+
+	combo, _ := form.AddComboBox(1, pdf.Rectangle{LLX: 50, LLY: 575, URX: 250, URY: 600}, "country",
+		[]pdf.ChoiceOption{{Value: "USA"}, {Value: "Canada"}})
+	combo.SetSelected(0)
+
+	list, _ := form.AddListBox(1, pdf.Rectangle{LLX: 50, LLY: 480, URX: 250, URY: 565}, "color",
+		[]pdf.ChoiceOption{{Value: "Red"}, {Value: "Green"}, {Value: "Blue"}})
+	list.SetSelected(2)
+
+	form.AddPushButton(1, pdf.Rectangle{LLX: 50, LLY: 430, URX: 200, URY: 460}, "submit", "Submit")
+
+	var buf bytes.Buffer
+	if _, err := doc.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	doc2, err := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("Reopen: %v", err)
+	}
+
+	form2 := doc2.Form()
+	if got := len(form2.Fields()); got != 6 {
+		t.Errorf("Fields count = %d, want 6", got)
+	}
+	if got := form2.Field("name").(*pdf.TextBoxField).Value(); got != "Jane Doe" {
+		t.Errorf("name = %q, want 'Jane Doe'", got)
+	}
+	if !form2.Field("subscribe").(*pdf.CheckboxField).Checked() {
+		t.Error("subscribe not checked")
+	}
+	if !form2.Field("plan").(*pdf.RadioButtonField).Options()[1].Selected() {
+		t.Error("plan opt 1 not selected")
+	}
+	if got := form2.Field("country").(*pdf.ComboBoxField).Selected(); got != 0 {
+		t.Errorf("country selected = %d, want 0", got)
+	}
+	sel := form2.Field("color").(*pdf.ListBoxField).Selected()
+	if len(sel) != 1 || sel[0] != 2 {
+		t.Errorf("color selected = %v, want [2]", sel)
+	}
+	if pdf.FieldType(form2.Field("submit")) != pdf.FormFieldTypePushButton {
+		t.Error("submit not PushButton type")
+	}
+}
