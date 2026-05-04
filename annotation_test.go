@@ -91,3 +91,36 @@ func TestAnnotationCollectionAddLinkRoundTrip(t *testing.T) {
 		t.Errorf("Rect = %+v, want {50 700 200 720}", r)
 	}
 }
+
+func TestLinkAnnotationGoToURIAction(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	link := pdf.NewLinkAnnotation(page, pdf.Rectangle{LLX: 50, LLY: 700, URX: 200, URY: 720})
+	link.SetAction(pdf.NewGoToURIAction("https://example.com/path"))
+	if err := page.Annotations().Add(link); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, err := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("OpenStream: %v", err)
+	}
+	page2, _ := doc2.Page(1)
+	link2 := page2.Annotations().At(0).(*pdf.LinkAnnotation)
+	act := link2.Action()
+	if act == nil {
+		t.Fatal("Action() = nil after roundtrip")
+	}
+	if act.ActionType() != pdf.ActionTypeGoToURI {
+		t.Errorf("ActionType = %v, want ActionTypeGoToURI", act.ActionType())
+	}
+	uri, ok := act.(*pdf.GoToURIAction)
+	if !ok {
+		t.Fatalf("concrete type = %T, want *pdf.GoToURIAction", act)
+	}
+	if uri.URI() != "https://example.com/path" {
+		t.Errorf("URI = %q, want %q", uri.URI(), "https://example.com/path")
+	}
+}

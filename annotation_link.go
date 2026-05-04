@@ -9,6 +9,25 @@ type LinkAnnotation struct {
 
 func (a *LinkAnnotation) AnnotationType() AnnotationType { return AnnotationTypeLink }
 
+// Action returns the action attached to this link, or nil if no /A is
+// present or the action type is unsupported.
+func (a *LinkAnnotation) Action() Action {
+	d, ok := a.dict["/A"].(pdfDict)
+	if !ok {
+		return nil
+	}
+	return parseAction(d)
+}
+
+// SetAction writes the /A entry. nil clears /A.
+func (a *LinkAnnotation) SetAction(act Action) {
+	if act == nil {
+		delete(a.dict, "/A")
+		return
+	}
+	a.dict["/A"] = act.encode()
+}
+
 // NewLinkAnnotation builds an unbound link annotation. Page must be
 // non-nil. The annotation is not added to the document until
 // page.Annotations().Add(link) succeeds.
