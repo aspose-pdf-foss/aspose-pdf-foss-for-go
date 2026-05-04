@@ -131,6 +131,73 @@ func parseGoToAction(d pdfDict) *GoToAction {
 	return a
 }
 
+// NamedActionType identifies one of the standard viewer commands
+// supported by /Named actions per ISO 32000-1 §12.6.4.11.
+type NamedActionType int
+
+const (
+	NamedActionUnknown   NamedActionType = iota
+	NamedActionFirstPage
+	NamedActionLastPage
+	NamedActionNextPage
+	NamedActionPrevPage
+	NamedActionPrint
+)
+
+// NamedAction triggers a built-in viewer command (FirstPage, Print, ...).
+type NamedAction struct {
+	name NamedActionType
+}
+
+func (a *NamedAction) ActionType() ActionType    { return ActionTypeNamed }
+func (a *NamedAction) Name() NamedActionType     { return a.name }
+func (a *NamedAction) SetName(n NamedActionType) { a.name = n }
+
+func (a *NamedAction) encode() pdfDict {
+	return pdfDict{
+		"/Type": pdfName("/Action"),
+		"/S":    pdfName("/Named"),
+		"/N":    pdfName(namedActionToPDF(a.name)),
+	}
+}
+
+func namedActionToPDF(n NamedActionType) string {
+	switch n {
+	case NamedActionFirstPage:
+		return "/FirstPage"
+	case NamedActionLastPage:
+		return "/LastPage"
+	case NamedActionNextPage:
+		return "/NextPage"
+	case NamedActionPrevPage:
+		return "/PrevPage"
+	case NamedActionPrint:
+		return "/Print"
+	}
+	return ""
+}
+
+func pdfNameToNamedAction(s pdfName) NamedActionType {
+	switch s {
+	case "/FirstPage":
+		return NamedActionFirstPage
+	case "/LastPage":
+		return NamedActionLastPage
+	case "/NextPage":
+		return NamedActionNextPage
+	case "/PrevPage":
+		return NamedActionPrevPage
+	case "/Print":
+		return NamedActionPrint
+	}
+	return NamedActionUnknown
+}
+
+// NewNamedAction builds a /Named action.
+func NewNamedAction(n NamedActionType) *NamedAction {
+	return &NamedAction{name: n}
+}
+
 // parseAction returns the matching concrete action type for a resolved
 // /A dict. Caller resolves indirect refs before calling. Returns nil
 // for unsupported subtypes (e.g. /Launch, /GoToR).
@@ -142,6 +209,9 @@ func parseAction(d pdfDict) Action {
 		return &GoToURIAction{uri: uri}
 	case "/GoTo":
 		return parseGoToAction(d)
+	case "/Named":
+		n, _ := d["/N"].(pdfName)
+		return &NamedAction{name: pdfNameToNamedAction(n)}
 	}
 	return nil
 }
