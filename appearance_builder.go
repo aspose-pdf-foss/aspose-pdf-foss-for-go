@@ -117,7 +117,9 @@ func (ab *appearanceBuilder) SetDashPattern(pattern []float64, phase float64) {
 	ab.buf.WriteString(" d\n")
 }
 
-// SetStrokeColorRGB sets the stroke color to RGB (RG operator).
+// SetStrokeColorRGB sets the stroke color to RGB (RG operator). The
+// Alpha field of c is ignored; PDF transparency requires a separate
+// gs operator with /CA in /ExtGState — out of scope for this builder.
 func (ab *appearanceBuilder) SetStrokeColorRGB(c Color) {
 	ab.buf.WriteString(formatFloat(c.R))
 	ab.buf.WriteByte(' ')
@@ -127,7 +129,9 @@ func (ab *appearanceBuilder) SetStrokeColorRGB(c Color) {
 	ab.buf.WriteString(" RG\n")
 }
 
-// SetFillColorRGB sets the fill color to RGB (rg operator).
+// SetFillColorRGB sets the fill color to RGB (rg operator). The Alpha
+// field of c is ignored; PDF transparency requires a separate gs
+// operator with /ca in /ExtGState — out of scope for this builder.
 func (ab *appearanceBuilder) SetFillColorRGB(c Color) {
 	ab.buf.WriteString(formatFloat(c.R))
 	ab.buf.WriteByte(' ')
