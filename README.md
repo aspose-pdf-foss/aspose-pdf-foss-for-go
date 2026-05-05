@@ -46,6 +46,7 @@ doc.Save("merged.pdf")
 - **Text watermarks** — apply text watermarks to all or selected pages with full styling control
 - **Stream input** — open PDFs from any `io.Reader`, not just file paths
 - **Forms (AcroForm)** — read, fill, and build from scratch all standard field types (text, checkbox, radio, combo box, list box, push button); programmatic field creation with `AddTextField`/`AddCheckbox`/`AddRadioGroup`/`AddComboBox`/`AddListBox`/`AddPushButton`; `RemoveField`; non-ASCII values encoded as UTF-16BE; viewers regenerate appearances via auto `/NeedAppearances=true`
+- **Annotations** — Link (with /A actions: GoToURI, GoTo, Named, SubmitForm, ResetForm, JavaScript-read-only), Highlight, Underline, StrikeOut, Squiggly. Page-scoped collection API (`Page.Annotations()` with `Add`/`At`/`Delete`/`DeleteAt`); existing form widgets surface as read-only `WidgetAnnotation`
 
 ## API Reference
 
@@ -272,6 +273,7 @@ page, _ := doc.Page(1)
 link := pdf.NewLinkAnnotation(page, pdf.Rectangle{LLX: 50, LLY: 700, URX: 200, URY: 720})
 link.SetAction(pdf.NewGoToURIAction("https://example.com"))
 link.SetColor(&pdf.Color{R: 0, G: 0, B: 1, A: 1})
+link.SetHighlight(pdf.LinkHighlightOutline) // /H click feedback: None / Invert (default) / Outline / Push
 page.Annotations().Add(link)
 
 // Highlight a passage
