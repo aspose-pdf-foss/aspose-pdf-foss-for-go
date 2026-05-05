@@ -222,3 +222,33 @@ func (ab *appearanceBuilder) Ellipse(cx, cy, rx, ry float64) {
 	ab.CurveTo(cx+dx, cy-ry, cx+rx, cy-dy, cx+rx, cy)     // bottom → right
 	ab.ClosePath()
 }
+
+// Stroke strokes the current path (S operator).
+func (ab *appearanceBuilder) Stroke() {
+	ab.buf.WriteString("S\n")
+}
+
+// ClosePathStroke closes and strokes the current path (s operator).
+func (ab *appearanceBuilder) ClosePathStroke() {
+	ab.buf.WriteString("s\n")
+}
+
+// Fill fills the current path using the non-zero winding rule (f operator).
+func (ab *appearanceBuilder) Fill() {
+	ab.buf.WriteString("f\n")
+}
+
+// FillStroke fills then strokes the current path (B operator).
+func (ab *appearanceBuilder) FillStroke() {
+	ab.buf.WriteString("B\n")
+}
+
+// ClosePathFillStroke closes, fills, then strokes the current path (b operator).
+func (ab *appearanceBuilder) ClosePathFillStroke() {
+	ab.buf.WriteString("b\n")
+}
+
+// EndPath discards the current path without painting (n operator).
+func (ab *appearanceBuilder) EndPath() {
+	ab.buf.WriteString("n\n")
+}

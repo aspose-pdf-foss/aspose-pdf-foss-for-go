@@ -175,3 +175,51 @@ func TestBuilderEllipse(t *testing.T) {
 		t.Errorf("Ellipse(50,50,25,25):\n got: %q\nwant: %q", got, want)
 	}
 }
+
+func TestBuilderStroke(t *testing.T) {
+	b := newAppearanceBuilder()
+	b.Stroke()
+	if got := string(b.Bytes()); got != "S\n" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestBuilderClosePathStroke(t *testing.T) {
+	b := newAppearanceBuilder()
+	b.ClosePathStroke()
+	if got := string(b.Bytes()); got != "s\n" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestBuilderFill(t *testing.T) {
+	b := newAppearanceBuilder()
+	b.Fill()
+	if got := string(b.Bytes()); got != "f\n" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestBuilderFillStroke(t *testing.T) {
+	b := newAppearanceBuilder()
+	b.FillStroke()
+	if got := string(b.Bytes()); got != "B\n" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestBuilderClosePathFillStroke(t *testing.T) {
+	b := newAppearanceBuilder()
+	b.ClosePathFillStroke()
+	if got := string(b.Bytes()); got != "b\n" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestBuilderEndPath(t *testing.T) {
+	b := newAppearanceBuilder()
+	b.EndPath()
+	if got := string(b.Bytes()); got != "n\n" {
+		t.Errorf("got %q", got)
+	}
+}
