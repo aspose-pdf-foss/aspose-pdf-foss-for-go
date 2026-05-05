@@ -116,3 +116,35 @@ func (ab *appearanceBuilder) SetDashPattern(pattern []float64, phase float64) {
 	ab.buf.WriteString(formatFloat(phase))
 	ab.buf.WriteString(" d\n")
 }
+
+// SetStrokeColorRGB sets the stroke color to RGB (RG operator).
+func (ab *appearanceBuilder) SetStrokeColorRGB(c Color) {
+	ab.buf.WriteString(formatFloat(c.R))
+	ab.buf.WriteByte(' ')
+	ab.buf.WriteString(formatFloat(c.G))
+	ab.buf.WriteByte(' ')
+	ab.buf.WriteString(formatFloat(c.B))
+	ab.buf.WriteString(" RG\n")
+}
+
+// SetFillColorRGB sets the fill color to RGB (rg operator).
+func (ab *appearanceBuilder) SetFillColorRGB(c Color) {
+	ab.buf.WriteString(formatFloat(c.R))
+	ab.buf.WriteByte(' ')
+	ab.buf.WriteString(formatFloat(c.G))
+	ab.buf.WriteByte(' ')
+	ab.buf.WriteString(formatFloat(c.B))
+	ab.buf.WriteString(" rg\n")
+}
+
+// SetStrokeGray sets the stroke color to a grayscale value (G operator).
+func (ab *appearanceBuilder) SetStrokeGray(g float64) {
+	ab.buf.WriteString(formatFloat(g))
+	ab.buf.WriteString(" G\n")
+}
+
+// SetFillGray sets the fill color to a grayscale value (g operator).
+func (ab *appearanceBuilder) SetFillGray(g float64) {
+	ab.buf.WriteString(formatFloat(g))
+	ab.buf.WriteString(" g\n")
+}

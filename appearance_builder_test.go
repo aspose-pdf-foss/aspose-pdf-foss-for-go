@@ -84,3 +84,35 @@ func TestBuilderSetDashPatternEmpty(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestBuilderSetStrokeColorRGB(t *testing.T) {
+	b := newAppearanceBuilder()
+	b.SetStrokeColorRGB(Color{R: 1, G: 0.5, B: 0})
+	if got := string(b.Bytes()); got != "1 0.5 0 RG\n" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestBuilderSetFillColorRGB(t *testing.T) {
+	b := newAppearanceBuilder()
+	b.SetFillColorRGB(Color{R: 0, G: 1, B: 1})
+	if got := string(b.Bytes()); got != "0 1 1 rg\n" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestBuilderSetStrokeGray(t *testing.T) {
+	b := newAppearanceBuilder()
+	b.SetStrokeGray(0.25)
+	if got := string(b.Bytes()); got != "0.25 G\n" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestBuilderSetFillGray(t *testing.T) {
+	b := newAppearanceBuilder()
+	b.SetFillGray(0.75)
+	if got := string(b.Bytes()); got != "0.75 g\n" {
+		t.Errorf("got %q", got)
+	}
+}
