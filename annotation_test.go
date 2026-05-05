@@ -253,6 +253,45 @@ func TestLinkAnnotationReadFromExistingPDF(t *testing.T) {
 	}
 }
 
+func TestLinkAnnotationSubmitFormAction(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	link := pdf.NewLinkAnnotation(page, pdf.Rectangle{LLX: 50, LLY: 700, URX: 200, URY: 720})
+	link.SetAction(pdf.NewSubmitFormAction(
+		"https://example.com/submit",
+		[]string{"name", "email"},
+		pdf.SubmitGetMethod|pdf.SubmitExportFormat,
+	))
+	if err := page.Annotations().Add(link); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, err := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("OpenStream: %v", err)
+	}
+	page2, _ := doc2.Page(1)
+	sf, ok := page2.Annotations().At(0).(*pdf.LinkAnnotation).Action().(*pdf.SubmitFormAction)
+	if !ok {
+		t.Fatalf("not a SubmitFormAction")
+	}
+	if sf.URL() != "https://example.com/submit" {
+		t.Errorf("URL = %q", sf.URL())
+	}
+	got := sf.FieldNames()
+	if len(got) != 2 || got[0] != "name" || got[1] != "email" {
+		t.Errorf("FieldNames = %v, want [name email]", got)
+	}
+	if sf.Flags()&pdf.SubmitGetMethod == 0 {
+		t.Error("SubmitGetMethod flag not set")
+	}
+	if sf.Flags()&pdf.SubmitExportFormat == 0 {
+		t.Error("SubmitExportFormat flag not set")
+	}
+}
+
 func TestLinkAnnotationNamedAction(t *testing.T) {
 	for _, tc := range []struct {
 		name string

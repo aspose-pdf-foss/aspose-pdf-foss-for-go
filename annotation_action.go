@@ -197,6 +197,86 @@ func NewNamedAction(n NamedActionType) *NamedAction {
 	return &NamedAction{name: n}
 }
 
+// SubmitFormFlags is the /Flags bitfield for a /SubmitForm action per
+// ISO 32000-1 Table 237. Bit 1 is least significant.
+type SubmitFormFlags int
+
+const (
+	SubmitIncludeNoValueFields SubmitFormFlags = 1 << 1
+	SubmitExportFormat         SubmitFormFlags = 1 << 2
+	SubmitGetMethod            SubmitFormFlags = 1 << 3
+	SubmitSubmitCoordinates    SubmitFormFlags = 1 << 4
+	SubmitXFDF                 SubmitFormFlags = 1 << 5
+	SubmitIncludeAppendSaves   SubmitFormFlags = 1 << 6
+	SubmitIncludeAnnotations   SubmitFormFlags = 1 << 7
+	SubmitSubmitPDF            SubmitFormFlags = 1 << 8
+	SubmitCanonicalFormat      SubmitFormFlags = 1 << 9
+	SubmitExclNonUserAnnots    SubmitFormFlags = 1 << 10
+	SubmitExclFKey             SubmitFormFlags = 1 << 11
+	SubmitEmbedForm            SubmitFormFlags = 1 << 13
+)
+
+// SubmitFormAction submits form field values to a URL.
+type SubmitFormAction struct {
+	url    string
+	fields []string
+	flags  SubmitFormFlags
+}
+
+func (a *SubmitFormAction) ActionType() ActionType     { return ActionTypeSubmitForm }
+func (a *SubmitFormAction) URL() string                { return a.url }
+func (a *SubmitFormAction) FieldNames() []string       { return a.fields }
+func (a *SubmitFormAction) Flags() SubmitFormFlags     { return a.flags }
+func (a *SubmitFormAction) SetURL(u string)            { a.url = u }
+func (a *SubmitFormAction) SetFieldNames(f []string)   { a.fields = f }
+func (a *SubmitFormAction) SetFlags(f SubmitFormFlags) { a.flags = f }
+
+func (a *SubmitFormAction) encode() pdfDict {
+	d := pdfDict{
+		"/Type": pdfName("/Action"),
+		"/S":    pdfName("/SubmitForm"),
+		"/F":    pdfDict{"/FS": pdfName("/URL"), "/F": a.url},
+	}
+	if len(a.fields) > 0 {
+		arr := make(pdfArray, 0, len(a.fields))
+		for _, f := range a.fields {
+			arr = append(arr, f)
+		}
+		d["/Fields"] = arr
+	}
+	if a.flags != 0 {
+		d["/Flags"] = int(a.flags)
+	}
+	return d
+}
+
+// NewSubmitFormAction builds a /SubmitForm action.
+func NewSubmitFormAction(url string, fields []string, flags SubmitFormFlags) *SubmitFormAction {
+	return &SubmitFormAction{url: url, fields: fields, flags: flags}
+}
+
+func parseSubmitFormAction(d pdfDict) *SubmitFormAction {
+	a := &SubmitFormAction{}
+	// /F can be either a URL filespec dict or a plain string.
+	switch v := d["/F"].(type) {
+	case pdfDict:
+		a.url = decodeFormString(v["/F"])
+	case string:
+		a.url = decodeFormString(v)
+	}
+	if arr, ok := d["/Fields"].(pdfArray); ok {
+		for _, item := range arr {
+			if s, ok := item.(string); ok {
+				a.fields = append(a.fields, decodeFormString(s))
+			}
+		}
+	}
+	if f, ok := d["/Flags"]; ok {
+		a.flags = SubmitFormFlags(toInt(f))
+	}
+	return a
+}
+
 // parseAction returns the matching concrete action type for a resolved
 // /A dict. Caller resolves indirect refs before calling. Returns nil
 // for unsupported subtypes (e.g. /Launch, /GoToR).
@@ -211,6 +291,8 @@ func parseAction(d pdfDict) Action {
 	case "/Named":
 		n, _ := d["/N"].(pdfName)
 		return &NamedAction{name: pdfNameToNamedAction(n)}
+	case "/SubmitForm":
+		return parseSubmitFormAction(d)
 	}
 	return nil
 }
