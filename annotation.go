@@ -149,8 +149,11 @@ func (c *AnnotationCollection) DeleteAt(index int) error {
 		return fmt.Errorf("AnnotationCollection.DeleteAt(%d): out of range [0,%d)", index, len(c.items))
 	}
 	a := c.items[index]
+	// items[index] is guaranteed attached to this page by Add; Delete only
+	// returns false for nil, unattached, or wrong-page handles — none apply.
+	// The branch below is a defensive invariant assertion.
 	if !c.Delete(a) {
-		return fmt.Errorf("AnnotationCollection.DeleteAt(%d): underlying delete failed", index)
+		return fmt.Errorf("AnnotationCollection.DeleteAt(%d): invariant violated (Delete returned false on a known-attached handle)", index)
 	}
 	return nil
 }

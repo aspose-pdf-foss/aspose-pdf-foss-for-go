@@ -574,6 +574,42 @@ func TestAnnotationCollectionDeleteAt(t *testing.T) {
 	}
 }
 
+func TestAnnotationCollectionDeleteAtMiddle(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+
+	a := pdf.NewLinkAnnotation(page, pdf.Rectangle{LLX: 0, LLY: 0, URX: 10, URY: 10})
+	a.SetContents("a")
+	if err := page.Annotations().Add(a); err != nil {
+		t.Fatalf("Add a: %v", err)
+	}
+	b := pdf.NewLinkAnnotation(page, pdf.Rectangle{LLX: 0, LLY: 0, URX: 10, URY: 10})
+	b.SetContents("b")
+	if err := page.Annotations().Add(b); err != nil {
+		t.Fatalf("Add b: %v", err)
+	}
+	c := pdf.NewLinkAnnotation(page, pdf.Rectangle{LLX: 0, LLY: 0, URX: 10, URY: 10})
+	c.SetContents("c")
+	if err := page.Annotations().Add(c); err != nil {
+		t.Fatalf("Add c: %v", err)
+	}
+
+	// Remove the middle annotation; "a" and "c" should remain in order.
+	if err := page.Annotations().DeleteAt(1); err != nil {
+		t.Fatalf("DeleteAt(1): %v", err)
+	}
+	ac := page.Annotations()
+	if ac.Count() != 2 {
+		t.Fatalf("Count after middle DeleteAt = %d, want 2", ac.Count())
+	}
+	if got := ac.At(0).Contents(); got != "a" {
+		t.Errorf("At(0).Contents = %q, want \"a\"", got)
+	}
+	if got := ac.At(1).Contents(); got != "c" {
+		t.Errorf("At(1).Contents = %q, want \"c\" (middle removed)", got)
+	}
+}
+
 func TestAnnotationCollectionIdempotentAdd(t *testing.T) {
 	doc := pdf.NewDocument(595, 842)
 	page, _ := doc.Page(1)
