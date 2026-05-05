@@ -720,3 +720,51 @@ func TestAnnotationsCoexistWithForm(t *testing.T) {
 		t.Errorf("URI = %q, want \"https://example.com\"", uri.URI())
 	}
 }
+
+func TestAnnotationFilterByType(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	link := pdf.NewLinkAnnotation(page, pdf.Rectangle{LLX: 50, LLY: 700, URX: 200, URY: 720})
+	link.SetAction(pdf.NewGoToURIAction("https://example.com"))
+	if err := page.Annotations().Add(link); err != nil {
+		t.Fatalf("Add link: %v", err)
+	}
+
+	hl := pdf.NewHighlightAnnotation(page, pdf.Rectangle{LLX: 50, LLY: 600, URX: 300, URY: 615})
+	if err := page.Annotations().Add(hl); err != nil {
+		t.Fatalf("Add highlight: %v", err)
+	}
+
+	ul := pdf.NewUnderlineAnnotation(page, pdf.Rectangle{LLX: 50, LLY: 500, URX: 300, URY: 515})
+	if err := page.Annotations().Add(ul); err != nil {
+		t.Fatalf("Add underline: %v", err)
+	}
+
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	page2, _ := doc2.Page(1)
+
+	// Aspose-style filter pattern.
+	links := 0
+	highlights := 0
+	underlines := 0
+	for _, a := range page2.Annotations().All() {
+		switch a.AnnotationType() {
+		case pdf.AnnotationTypeLink:
+			links++
+			if u, ok := a.(*pdf.LinkAnnotation).Action().(*pdf.GoToURIAction); ok {
+				if u.URI() != "https://example.com" {
+					t.Errorf("URI = %q", u.URI())
+				}
+			}
+		case pdf.AnnotationTypeHighlight:
+			highlights++
+		case pdf.AnnotationTypeUnderline:
+			underlines++
+		}
+	}
+	if links != 1 || highlights != 1 || underlines != 1 {
+		t.Errorf("counts: links=%d highlights=%d underlines=%d", links, highlights, underlines)
+	}
+}
