@@ -682,16 +682,41 @@ func TestAnnotationsCoexistWithForm(t *testing.T) {
 	if doc2.Form().HasField("textField") == false {
 		t.Error("textField missing after annotations + roundtrip")
 	}
-	// The new link should be there too.
+
+	// Widgets must all survive the roundtrip in the page's /Annots —
+	// this is the exact regression appendAnnotToPage's indirect-ref
+	// handling guards against. HasField alone is not sufficient because
+	// it walks /AcroForm/Fields, which is independent of the page's
+	// per-page /Annots array.
 	page2, _ := doc2.Page(1)
-	hasLink := false
-	for _, a := range page2.Annotations().All() {
-		if a.AnnotationType() == pdf.AnnotationTypeLink {
-			hasLink = true
-			break
+	ac2 := page2.Annotations()
+	widgetCountAfter := 0
+	var foundLink *pdf.LinkAnnotation
+	for _, a := range ac2.All() {
+		if a.AnnotationType() == pdf.AnnotationTypeWidget {
+			widgetCountAfter++
+		}
+		if l, ok := a.(*pdf.LinkAnnotation); ok && foundLink == nil {
+			foundLink = l
 		}
 	}
-	if !hasLink {
-		t.Error("LinkAnnotation lost after roundtrip with form widgets")
+	if widgetCountAfter != widgetCount {
+		t.Errorf("widget count changed across roundtrip: before=%d after=%d", widgetCount, widgetCountAfter)
+	}
+	if foundLink == nil {
+		t.Fatal("LinkAnnotation lost after roundtrip with form widgets")
+	}
+
+	// The link's action must survive too.
+	act := foundLink.Action()
+	if act == nil {
+		t.Fatal("LinkAnnotation.Action() = nil after roundtrip")
+	}
+	uri, ok := act.(*pdf.GoToURIAction)
+	if !ok {
+		t.Fatalf("Action concrete type = %T, want *pdf.GoToURIAction", act)
+	}
+	if uri.URI() != "https://example.com" {
+		t.Errorf("URI = %q, want \"https://example.com\"", uri.URI())
 	}
 }
