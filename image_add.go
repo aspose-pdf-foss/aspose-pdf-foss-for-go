@@ -336,7 +336,6 @@ func nextXObjectName(xobjDict pdfDict) string {
 	}
 }
 
-
 func (p *Page) appendToContentStream(data []byte) error {
 	existing, err := p.contentStreams()
 	if err != nil {

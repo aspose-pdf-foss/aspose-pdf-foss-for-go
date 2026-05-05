@@ -28,18 +28,36 @@ func TestBuilderSetLineWidth(t *testing.T) {
 }
 
 func TestBuilderSetLineCap(t *testing.T) {
-	b := newAppearanceBuilder()
-	b.SetLineCap(LineCapRound)
-	if got := string(b.Bytes()); got != "1 J\n" {
-		t.Errorf("got %q", got)
+	for _, tc := range []struct {
+		cap  LineCap
+		want string
+	}{
+		{LineCapButt, "0 J\n"},
+		{LineCapRound, "1 J\n"},
+		{LineCapSquare, "2 J\n"},
+	} {
+		b := newAppearanceBuilder()
+		b.SetLineCap(tc.cap)
+		if got := string(b.Bytes()); got != tc.want {
+			t.Errorf("cap=%v: got %q, want %q", tc.cap, got, tc.want)
+		}
 	}
 }
 
 func TestBuilderSetLineJoin(t *testing.T) {
-	b := newAppearanceBuilder()
-	b.SetLineJoin(LineJoinBevel)
-	if got := string(b.Bytes()); got != "2 j\n" {
-		t.Errorf("got %q", got)
+	for _, tc := range []struct {
+		join LineJoin
+		want string
+	}{
+		{LineJoinMiter, "0 j\n"},
+		{LineJoinRound, "1 j\n"},
+		{LineJoinBevel, "2 j\n"},
+	} {
+		b := newAppearanceBuilder()
+		b.SetLineJoin(tc.join)
+		if got := string(b.Bytes()); got != tc.want {
+			t.Errorf("join=%v: got %q, want %q", tc.join, got, tc.want)
+		}
 	}
 }
 

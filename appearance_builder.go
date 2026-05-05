@@ -3,6 +3,7 @@ package asposepdf
 import (
 	"bytes"
 	"strconv"
+	"strings"
 )
 
 // LineCap is the /J line cap style per ISO 32000-1 §8.4.3.3 Table 54.
@@ -35,78 +36,83 @@ func newAppearanceBuilder() *appearanceBuilder {
 }
 
 // Bytes returns the accumulated content-stream bytes.
-func (b *appearanceBuilder) Bytes() []byte {
-	return b.buf.Bytes()
+func (ab *appearanceBuilder) Bytes() []byte {
+	return ab.buf.Bytes()
 }
 
-// formatFloat formats f without scientific notation and without trailing
-// zeros. Matches the convention used elsewhere in the project.
+// formatFloat formats f as a compact fixed-point decimal: up to 6
+// decimal places (sub-micron precision at 72dpi, the de facto PDF
+// industry convention), trailing zeros and trailing decimal point
+// trimmed.
 func formatFloat(f float64) string {
-	return strconv.FormatFloat(f, 'f', -1, 64)
+	s := strconv.FormatFloat(f, 'f', 6, 64)
+	s = strings.TrimRight(s, "0")
+	s = strings.TrimRight(s, ".")
+	return s
 }
 
 // PushState saves the current graphics state (q operator).
-func (b *appearanceBuilder) PushState() {
-	b.buf.WriteString("q\n")
+func (ab *appearanceBuilder) PushState() {
+	ab.buf.WriteString("q\n")
 }
 
 // PopState restores the last saved graphics state (Q operator).
-func (b *appearanceBuilder) PopState() {
-	b.buf.WriteString("Q\n")
+func (ab *appearanceBuilder) PopState() {
+	ab.buf.WriteString("Q\n")
 }
 
 // ConcatMatrix concatenates the given 2x3 matrix to the CTM (cm operator).
-func (b *appearanceBuilder) ConcatMatrix(a, bb, c, d, e, f float64) {
-	b.buf.WriteString(formatFloat(a))
-	b.buf.WriteByte(' ')
-	b.buf.WriteString(formatFloat(bb))
-	b.buf.WriteByte(' ')
-	b.buf.WriteString(formatFloat(c))
-	b.buf.WriteByte(' ')
-	b.buf.WriteString(formatFloat(d))
-	b.buf.WriteByte(' ')
-	b.buf.WriteString(formatFloat(e))
-	b.buf.WriteByte(' ')
-	b.buf.WriteString(formatFloat(f))
-	b.buf.WriteString(" cm\n")
+func (ab *appearanceBuilder) ConcatMatrix(a, b, c, d, e, f float64) {
+	ab.buf.WriteString(formatFloat(a))
+	ab.buf.WriteByte(' ')
+	ab.buf.WriteString(formatFloat(b))
+	ab.buf.WriteByte(' ')
+	ab.buf.WriteString(formatFloat(c))
+	ab.buf.WriteByte(' ')
+	ab.buf.WriteString(formatFloat(d))
+	ab.buf.WriteByte(' ')
+	ab.buf.WriteString(formatFloat(e))
+	ab.buf.WriteByte(' ')
+	ab.buf.WriteString(formatFloat(f))
+	ab.buf.WriteString(" cm\n")
 }
 
 // SetLineWidth sets the stroke line width (w operator).
-func (b *appearanceBuilder) SetLineWidth(w float64) {
-	b.buf.WriteString(formatFloat(w))
-	b.buf.WriteString(" w\n")
+func (ab *appearanceBuilder) SetLineWidth(w float64) {
+	ab.buf.WriteString(formatFloat(w))
+	ab.buf.WriteString(" w\n")
 }
 
 // SetLineCap sets the line-cap style (J operator).
-func (b *appearanceBuilder) SetLineCap(c LineCap) {
-	b.buf.WriteString(strconv.Itoa(int(c)))
-	b.buf.WriteString(" J\n")
+func (ab *appearanceBuilder) SetLineCap(c LineCap) {
+	ab.buf.WriteString(strconv.Itoa(int(c)))
+	ab.buf.WriteString(" J\n")
 }
 
 // SetLineJoin sets the line-join style (j operator).
-func (b *appearanceBuilder) SetLineJoin(j LineJoin) {
-	b.buf.WriteString(strconv.Itoa(int(j)))
-	b.buf.WriteString(" j\n")
+func (ab *appearanceBuilder) SetLineJoin(j LineJoin) {
+	ab.buf.WriteString(strconv.Itoa(int(j)))
+	ab.buf.WriteString(" j\n")
 }
 
 // SetMiterLimit sets the miter limit (M operator).
-func (b *appearanceBuilder) SetMiterLimit(m float64) {
-	b.buf.WriteString(formatFloat(m))
-	b.buf.WriteString(" M\n")
+func (ab *appearanceBuilder) SetMiterLimit(m float64) {
+	ab.buf.WriteString(formatFloat(m))
+	ab.buf.WriteString(" M\n")
 }
 
 // SetDashPattern sets the line-dash pattern (d operator). A nil or empty
 // pattern emits "[] phase d", which means a solid line.
-func (b *appearanceBuilder) SetDashPattern(pattern []float64, phase float64) {
-	b.buf.WriteByte('[')
+func (ab *appearanceBuilder) SetDashPattern(pattern []float64, phase float64) {
+	ab.buf.WriteByte('[')
 	for i, v := range pattern {
 		if i > 0 {
-			b.buf.WriteByte(' ')
+			ab.buf.WriteByte(' ')
 		}
-		b.buf.WriteString(formatFloat(v))
+		ab.buf.WriteString(formatFloat(v))
 	}
-	b.buf.WriteByte(']')
-	b.buf.WriteByte(' ')
-	b.buf.WriteString(formatFloat(phase))
-	b.buf.WriteString(" d\n")
+	ab.buf.WriteByte(']')
+	ab.buf.WriteByte(' ')
+	ab.buf.WriteString(formatFloat(phase))
+	ab.buf.WriteString(" d\n")
 }
