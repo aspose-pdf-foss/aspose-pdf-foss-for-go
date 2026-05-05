@@ -367,9 +367,12 @@ type JavaScriptAction struct {
 func (a *JavaScriptAction) ActionType() ActionType { return ActionTypeJavaScript }
 func (a *JavaScriptAction) Script() string         { return a.script }
 
-// encode is required by the Action interface but not used (no constructor).
-// Returns a minimal /JavaScript dict so re-saving a file with a parsed JS
-// action preserves the script verbatim.
+// encode is required by the Action interface but not used (no
+// constructor). Returns a minimal /JavaScript dict so re-saving a file
+// with a parsed JS action preserves the script text. Stream-form /JS
+// in the input is emitted back as a literal string — the spec permits
+// either form (ISO 32000-1 §7.9.2), but the original storage form is
+// not round-tripped exactly.
 func (a *JavaScriptAction) encode() pdfDict {
 	return pdfDict{
 		"/Type": pdfName("/Action"),

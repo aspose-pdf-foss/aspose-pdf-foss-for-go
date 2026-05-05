@@ -424,9 +424,11 @@ func TestPdfWithLinksReadAllActions(t *testing.T) {
 	}
 
 	// Spot-check JavaScript: action[3] should be JS with non-empty script.
-	js, ok := ac.At(3).(*pdf.LinkAnnotation).Action().(*pdf.JavaScriptAction)
+	// The loop above already confirmed ac.At(3) is *LinkAnnotation with ActionTypeJavaScript.
+	link3 := ac.At(3).(*pdf.LinkAnnotation)
+	js, ok := link3.Action().(*pdf.JavaScriptAction)
 	if !ok {
-		t.Fatal("annotation[3] is not JavaScriptAction")
+		t.Fatal("annotation[3] action is not *JavaScriptAction")
 	}
 	if js.Script() == "" {
 		t.Error("JavaScriptAction.Script() returned empty string")
