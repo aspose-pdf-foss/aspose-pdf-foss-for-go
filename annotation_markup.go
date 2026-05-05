@@ -1,8 +1,10 @@
 package asposepdf
 
 // QuadPoint is one quadrilateral within a markup annotation's
-// /QuadPoints array. Each point names the four corners of one selection
-// quad, in PDF default user space coordinates.
+// /QuadPoints array. Per ISO 32000-1 §12.5.6.10 the eight floats name
+// the corners in this order: (X1,Y1)=upper-left, (X2,Y2)=upper-right,
+// (X3,Y3)=lower-left, (X4,Y4)=lower-right (in default user space, so
+// "upper" means higher Y).
 type QuadPoint struct {
 	X1, Y1, X2, Y2, X3, Y3, X4, Y4 float64
 }
@@ -17,6 +19,8 @@ type HighlightAnnotation struct {
 func (a *HighlightAnnotation) AnnotationType() AnnotationType { return AnnotationTypeHighlight }
 
 // QuadPoints returns the array of quads describing the selection.
+// Returns nil if /QuadPoints is absent or its array length is not a
+// multiple of 8 (malformed).
 func (a *HighlightAnnotation) QuadPoints() []QuadPoint {
 	return readQuadPoints(a.dict["/QuadPoints"])
 }
@@ -33,14 +37,16 @@ func (a *HighlightAnnotation) SetQuadPoints(qp []QuadPoint) {
 // NewHighlightAnnotation builds an unbound highlight annotation. Page
 // must be non-nil.
 func NewHighlightAnnotation(page *Page, rect Rectangle) *HighlightAnnotation {
-	return &HighlightAnnotation{annotationBase: newMarkupBase(page, rect, "/Highlight")}
+	return &HighlightAnnotation{annotationBase: newMarkupBase("NewHighlightAnnotation", page, rect, "/Highlight")}
 }
 
 // newMarkupBase is the shared constructor body for the four markup
-// types. Only /Subtype differs; everything else is identical.
-func newMarkupBase(page *Page, rect Rectangle, subtype pdfName) annotationBase {
+// types. Only /Subtype differs; everything else is identical. The
+// callerName argument identifies the public entry point for panic
+// diagnostics ("NewHighlightAnnotation: nil page", etc.).
+func newMarkupBase(callerName string, page *Page, rect Rectangle, subtype pdfName) annotationBase {
 	if page == nil {
-		panic("NewMarkupAnnotation: nil page")
+		panic(callerName + ": nil page")
 	}
 	dict := pdfDict{
 		"/Type":    pdfName("/Annot"),

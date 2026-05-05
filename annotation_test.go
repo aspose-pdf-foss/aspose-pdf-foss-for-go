@@ -489,6 +489,15 @@ func TestHighlightAnnotationRoundTrip(t *testing.T) {
 	if hl2.Title() != "Reviewer" {
 		t.Errorf("Title = %q", hl2.Title())
 	}
+	if hl2.Contents() != "Important" {
+		t.Errorf("Contents = %q, want \"Important\"", hl2.Contents())
+	}
+	c := hl2.Color()
+	if c == nil {
+		t.Errorf("Color = nil, want yellow RGB")
+	} else if c.R != 1 || c.G != 1 || c.B != 0 {
+		t.Errorf("Color = %+v, want {R:1 G:1 B:0 A:1}", *c)
+	}
 	qp := hl2.QuadPoints()
 	if len(qp) != 1 {
 		t.Fatalf("QuadPoints len = %d, want 1", len(qp))
