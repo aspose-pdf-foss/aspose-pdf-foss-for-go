@@ -55,14 +55,17 @@ func (b *annotationBase) annotationBaseRef() *annotationBase { return b }
 // page dict's /Annots array and to the document's object table; the
 // next Save writes them out.
 type AnnotationCollection struct {
-	page  *Page
+	page *Page
+	// items is rebuilt on every public access from page.pageObj()'s
+	// /Annots so that handles obtained via different *Page references
+	// to the same logical page (Document.Page(n) returns a fresh *Page
+	// each call) all observe the same live state.
 	items []Annotation
-	built bool // false until first Annotations() call walks /Annots
 }
 
 // Count reports how many annotations live on this page.
 func (c *AnnotationCollection) Count() int {
-	c.ensureBuilt()
+	c.rebuild()
 	return len(c.items)
 }
 
@@ -70,7 +73,7 @@ func (c *AnnotationCollection) Count() int {
 // slice is a live handle: mutations write through to the underlying
 // pdfDict and are visible to callers holding the same handle.
 func (c *AnnotationCollection) All() []Annotation {
-	c.ensureBuilt()
+	c.rebuild()
 	return c.items
 }
 
@@ -81,7 +84,7 @@ func (c *AnnotationCollection) Add(a Annotation) error {
 	if a == nil {
 		panic("Annotations.Add: nil annotation")
 	}
-	c.ensureBuilt()
+	c.rebuild()
 	base := a.annotationBaseRef()
 	if base.objID != 0 {
 		if base.attachedPage == c.page.pageObj() {
@@ -99,16 +102,14 @@ func (c *AnnotationCollection) Add(a Annotation) error {
 	base.doc = c.page.doc
 
 	// Append to page's /Annots array (preserves indirect-ref form if used).
+	// No need to update c.items here — the next public access calls rebuild().
 	appendAnnotToPage(c.page.doc.objects, c.page.pageObj(), pdfRef{Num: objID})
-
-	// Update local items so subsequent Count/All/At reflect the new state.
-	c.items = append(c.items, a)
 	return nil
 }
 
 // At returns the annotation at the given index. Panics if out of range.
 func (c *AnnotationCollection) At(index int) Annotation {
-	c.ensureBuilt()
+	c.rebuild()
 	return c.items[index]
 }
 
@@ -120,7 +121,7 @@ func (c *AnnotationCollection) Delete(a Annotation) bool {
 	if a == nil {
 		return false
 	}
-	c.ensureBuilt()
+	c.rebuild()
 	base := a.annotationBaseRef()
 	if base.objID == 0 || base.attachedPage != c.page.pageObj() {
 		return false
@@ -128,13 +129,7 @@ func (c *AnnotationCollection) Delete(a Annotation) bool {
 	// Splice out of /Annots (preserves indirect-ref form if used).
 	removeAnnotFromPage(c.page.doc.objects, c.page.pageObj(), base.objID)
 	delete(c.page.doc.objects, base.objID)
-	// Update local items.
-	for i, it := range c.items {
-		if it == a {
-			c.items = append(c.items[:i], c.items[i+1:]...)
-			break
-		}
-	}
+	// No need to update c.items — the next public access calls rebuild().
 	base.objID = 0
 	base.attachedPage = nil
 	return true
@@ -144,7 +139,7 @@ func (c *AnnotationCollection) Delete(a Annotation) bool {
 // out-of-range index. The annotation handle becomes dangling after
 // DeleteAt — see Delete for the dangling-handle semantics.
 func (c *AnnotationCollection) DeleteAt(index int) error {
-	c.ensureBuilt()
+	c.rebuild()
 	if index < 0 || index >= len(c.items) {
 		return fmt.Errorf("AnnotationCollection.DeleteAt(%d): out of range [0,%d)", index, len(c.items))
 	}
@@ -172,12 +167,11 @@ func (c *AnnotationCollection) attachedPageIndex(base *annotationBase) int {
 	return 0
 }
 
-// ensureBuilt populates c.items lazily on first access.
-func (c *AnnotationCollection) ensureBuilt() {
-	if c.built {
-		return
-	}
-	c.built = true
+// rebuild rebuilds c.items from the page's /Annots. Called from every
+// public method so that AnnotationCollection is a thin view, not a
+// stale snapshot. See the AnnotationCollection field comment.
+func (c *AnnotationCollection) rebuild() {
+	c.items = nil
 	c.walkAnnotations()
 }
 

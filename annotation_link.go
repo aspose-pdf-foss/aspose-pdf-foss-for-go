@@ -67,3 +67,54 @@ func NewLinkAnnotation(page *Page, rect Rectangle) *LinkAnnotation {
 		page: page,
 	}}
 }
+
+// LinkHighlightMode controls the visual feedback when the link is
+// activated by the user (the /H entry per ISO 32000-1 §12.5.6.5).
+type LinkHighlightMode int
+
+const (
+	// LinkHighlightInvert (default) inverts the contents of the link
+	// rectangle when activated.
+	LinkHighlightInvert LinkHighlightMode = iota
+	// LinkHighlightNone means no visible feedback on activation.
+	LinkHighlightNone
+	// LinkHighlightOutline inverts the annotation's border.
+	LinkHighlightOutline
+	// LinkHighlightPush visually depresses the rectangle on activation.
+	LinkHighlightPush
+)
+
+// Highlight returns the click-feedback mode (/H entry). Returns
+// LinkHighlightInvert if /H is absent (the PDF default).
+func (a *LinkAnnotation) Highlight() LinkHighlightMode {
+	n, ok := a.dict["/H"].(pdfName)
+	if !ok {
+		return LinkHighlightInvert
+	}
+	switch n {
+	case "/N":
+		return LinkHighlightNone
+	case "/I":
+		return LinkHighlightInvert
+	case "/O":
+		return LinkHighlightOutline
+	case "/P":
+		return LinkHighlightPush
+	}
+	return LinkHighlightInvert
+}
+
+// SetHighlight writes the /H entry. LinkHighlightInvert (the default)
+// removes /H entirely so that the dict matches a freshly-created link.
+func (a *LinkAnnotation) SetHighlight(h LinkHighlightMode) {
+	switch h {
+	case LinkHighlightNone:
+		a.dict["/H"] = pdfName("/N")
+	case LinkHighlightOutline:
+		a.dict["/H"] = pdfName("/O")
+	case LinkHighlightPush:
+		a.dict["/H"] = pdfName("/P")
+	default: // LinkHighlightInvert is the implicit default — no /H needed
+		delete(a.dict, "/H")
+	}
+}

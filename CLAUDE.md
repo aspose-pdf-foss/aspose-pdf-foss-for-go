@@ -152,7 +152,9 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `AnnotationCollection` — `Add(a) error`, `At(i) Annotation`, `Delete(a) bool`, `DeleteAt(i) error`, `Count() int`, `All() []Annotation`. Add panics on nil; idempotent same-page; errors on cross-page re-attach
 - Constructors: `NewLinkAnnotation(page, rect)`, `NewHighlightAnnotation(page, rect)`, `NewUnderlineAnnotation(page, rect)`, `NewStrikeOutAnnotation(page, rect)`, `NewSquigglyAnnotation(page, rect)`
 - `LinkAnnotation.Action() Action`, `LinkAnnotation.SetAction(act Action)` — nil clears /A
-- `Action` interface — `ActionType()`; concrete types: `GoToURIAction`, `GoToAction`, `NamedAction`, `SubmitFormAction`, `ResetFormAction`, `JavaScriptAction` (parse-only)
+- `LinkAnnotation.Highlight() LinkHighlightMode`, `LinkAnnotation.SetHighlight(h LinkHighlightMode)` — controls /H click-feedback (None / Invert / Outline / Push)
+- `LinkHighlightMode` enum — `LinkHighlightInvert` (default), `LinkHighlightNone`, `LinkHighlightOutline`, `LinkHighlightPush`
+- `Action` interface — `ActionType()`; concrete types: `GoToURIAction`, `GoToAction`, `NamedAction`, `SubmitFormAction`, `ResetFormAction`, `JavaScriptAction` (parse-only; access via `Script() string`)
 - Action constructors: `NewGoToURIAction(uri)`, `NewGoToAction(pageNum, top)`, `NewNamedAction(name)`, `NewSubmitFormAction(url, fields, flags)`, `NewResetFormAction(fields)`. JavaScript actions are read-only — there is no `NewJavaScriptAction`
 - `ActionType` enum — `ActionTypeUnknown`, `ActionTypeGoToURI`, `ActionTypeGoTo`, `ActionTypeNamed`, `ActionTypeSubmitForm`, `ActionTypeResetForm`, `ActionTypeJavaScript`
 - `NamedActionType` enum — `NamedActionFirstPage`, `NamedActionLastPage`, `NamedActionNextPage`, `NamedActionPrevPage`, `NamedActionPrint`

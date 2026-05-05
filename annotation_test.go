@@ -721,6 +721,63 @@ func TestAnnotationsCoexistWithForm(t *testing.T) {
 	}
 }
 
+func TestLinkAnnotationHighlightMode(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mode pdf.LinkHighlightMode
+	}{
+		{"None", pdf.LinkHighlightNone},
+		{"Invert", pdf.LinkHighlightInvert},
+		{"Outline", pdf.LinkHighlightOutline},
+		{"Push", pdf.LinkHighlightPush},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := pdf.NewDocument(595, 842)
+			page, _ := doc.Page(1)
+			link := pdf.NewLinkAnnotation(page, pdf.Rectangle{LLX: 50, LLY: 700, URX: 200, URY: 720})
+			link.SetHighlight(tc.mode)
+			if err := page.Annotations().Add(link); err != nil {
+				t.Fatalf("Add: %v", err)
+			}
+			var buf bytes.Buffer
+			doc.WriteTo(&buf)
+			doc2, err := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+			if err != nil {
+				t.Fatalf("OpenStream: %v", err)
+			}
+			page2, _ := doc2.Page(1)
+			link2 := page2.Annotations().At(0).(*pdf.LinkAnnotation)
+			if got := link2.Highlight(); got != tc.mode {
+				t.Errorf("Highlight = %v, want %v", got, tc.mode)
+			}
+		})
+	}
+}
+
+func TestAnnotationCollectionStaleCacheAcrossPageHandles(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	p1, _ := doc.Page(1)
+	linkA := pdf.NewLinkAnnotation(p1, pdf.Rectangle{LLX: 0, LLY: 0, URX: 10, URY: 10})
+	if err := p1.Annotations().Add(linkA); err != nil {
+		t.Fatalf("Add via p1: %v", err)
+	}
+
+	// Fresh *Page handle to the same logical page.
+	p2, _ := doc.Page(1)
+	linkB := pdf.NewLinkAnnotation(p2, pdf.Rectangle{LLX: 0, LLY: 0, URX: 10, URY: 10})
+	if err := p2.Annotations().Add(linkB); err != nil {
+		t.Fatalf("Add via p2: %v", err)
+	}
+
+	// Both *Page handles must see both annotations (no stale cache).
+	if got := p1.Annotations().Count(); got != 2 {
+		t.Errorf("p1.Annotations().Count() = %d, want 2", got)
+	}
+	if got := p2.Annotations().Count(); got != 2 {
+		t.Errorf("p2.Annotations().Count() = %d, want 2", got)
+	}
+}
+
 func TestAnnotationFilterByType(t *testing.T) {
 	doc := pdf.NewDocument(595, 842)
 	page, _ := doc.Page(1)
