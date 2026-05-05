@@ -356,6 +356,28 @@ func parseResetFormAction(d pdfDict) *ResetFormAction {
 	return a
 }
 
+// JavaScriptAction holds a JavaScript snippet attached to an annotation.
+// This subepic supports parsing JS actions read from existing PDFs.
+// Constructing JavaScript actions from user-supplied script is deferred
+// to a future security-conscious epic — there is no NewJavaScriptAction.
+type JavaScriptAction struct {
+	script string
+}
+
+func (a *JavaScriptAction) ActionType() ActionType { return ActionTypeJavaScript }
+func (a *JavaScriptAction) Script() string         { return a.script }
+
+// encode is required by the Action interface but not used (no constructor).
+// Returns a minimal /JavaScript dict so re-saving a file with a parsed JS
+// action preserves the script verbatim.
+func (a *JavaScriptAction) encode() pdfDict {
+	return pdfDict{
+		"/Type": pdfName("/Action"),
+		"/S":    pdfName("/JavaScript"),
+		"/JS":   a.script,
+	}
+}
+
 // parseAction returns the matching concrete action type for a resolved
 // /A dict. Caller resolves indirect refs before calling. Returns nil
 // for unsupported subtypes (e.g. /Launch, /GoToR).
@@ -374,6 +396,15 @@ func parseAction(d pdfDict) Action {
 		return parseSubmitFormAction(d)
 	case "/ResetForm":
 		return parseResetFormAction(d)
+	case "/JavaScript":
+		a := &JavaScriptAction{}
+		switch v := d["/JS"].(type) {
+		case string:
+			a.script = decodeFormString(v)
+		case *pdfStream:
+			a.script = string(v.Data)
+		}
+		return a
 	}
 	return nil
 }

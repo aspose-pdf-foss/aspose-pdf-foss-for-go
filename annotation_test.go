@@ -386,6 +386,53 @@ func TestLinkAnnotationNamedAction(t *testing.T) {
 	}
 }
 
+func TestPdfWithLinksReadAllActions(t *testing.T) {
+	doc, err := pdf.Open(testFile(t))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	page, _ := doc.Page(1)
+	ac := page.Annotations()
+	if ac.Count() != 6 {
+		t.Fatalf("Count = %d, want 6", ac.Count())
+	}
+	// Per the fixture survey: indices 0..5 carry GoTo, Launch, URI,
+	// JavaScript, Named, SubmitForm respectively. /Launch is unsupported
+	// — Action() returns nil for it.
+	wantTypes := []pdf.ActionType{
+		pdf.ActionTypeGoTo,
+		pdf.ActionTypeUnknown, // /Launch is out of scope
+		pdf.ActionTypeGoToURI,
+		pdf.ActionTypeJavaScript,
+		pdf.ActionTypeNamed,
+		pdf.ActionTypeSubmitForm,
+	}
+	for i, a := range ac.All() {
+		link, ok := a.(*pdf.LinkAnnotation)
+		if !ok {
+			t.Errorf("annotation[%d]: type = %T, want *LinkAnnotation", i, a)
+			continue
+		}
+		act := link.Action()
+		gotType := pdf.ActionTypeUnknown
+		if act != nil {
+			gotType = act.ActionType()
+		}
+		if gotType != wantTypes[i] {
+			t.Errorf("annotation[%d]: action type = %v, want %v", i, gotType, wantTypes[i])
+		}
+	}
+
+	// Spot-check JavaScript: action[3] should be JS with non-empty script.
+	js, ok := ac.At(3).(*pdf.LinkAnnotation).Action().(*pdf.JavaScriptAction)
+	if !ok {
+		t.Fatal("annotation[3] is not JavaScriptAction")
+	}
+	if js.Script() == "" {
+		t.Error("JavaScriptAction.Script() returned empty string")
+	}
+}
+
 func TestResetFormActionAllFields(t *testing.T) {
 	doc := pdf.NewDocument(595, 842)
 	page, _ := doc.Page(1)
