@@ -21,8 +21,10 @@ func makeFormXObject(content []byte, bbox Rectangle) *pdfStream {
 }
 
 // generateSquareAppearance produces /AP/N for a Square annotation.
-// Supports Solid, Dashed, Beveled, and Inset border styles;
-// Underline is added in a subsequent task.
+// Supports all five border styles: Solid, Dashed, Beveled, Inset, Underline.
+// InteriorColor (/IC) is applied as a fill for Solid/Dashed styles and as a
+// background rectangle for Beveled/Inset; it is ignored for Underline per
+// spec convention.
 func generateSquareAppearance(a *SquareAnnotation) *pdfStream {
 	rect := a.Rect()
 	width := rect.URX - rect.LLX
@@ -35,7 +37,30 @@ func generateSquareAppearance(a *SquareAnnotation) *pdfStream {
 
 	switch style {
 	case BorderBeveled, BorderInset:
+		// Two-pass color render. Fill first if /IC is set.
+		if ic := a.InteriorColor(); ic != nil {
+			b.PushState()
+			b.SetFillColorRGB(*ic)
+			inset := bw
+			b.Rect(inset, inset, width-2*bw, height-2*bw)
+			b.Fill()
+			b.PopState()
+		}
 		drawBeveledRectBorder(b, width, height, bw, a.Color(), style == BorderInset)
+
+	case BorderUnderline:
+		b.PushState()
+		b.SetLineWidth(bw)
+		if c := a.Color(); c != nil {
+			b.SetStrokeColorRGB(*c)
+		}
+		// Bottom edge only.
+		b.MoveTo(0, bw/2)
+		b.LineTo(width, bw/2)
+		b.Stroke()
+		b.PopState()
+		// Underline ignores /IC by spec convention.
+
 	default:
 		b.PushState()
 		b.SetLineWidth(bw)
@@ -51,7 +76,16 @@ func generateSquareAppearance(a *SquareAnnotation) *pdfStream {
 		}
 		inset := bw / 2
 		b.Rect(inset, inset, width-bw, height-bw)
-		b.Stroke()
+		hasFill := false
+		if ic := a.InteriorColor(); ic != nil {
+			b.SetFillColorRGB(*ic)
+			hasFill = true
+		}
+		if hasFill {
+			b.FillStroke()
+		} else {
+			b.Stroke()
+		}
 		b.PopState()
 	}
 

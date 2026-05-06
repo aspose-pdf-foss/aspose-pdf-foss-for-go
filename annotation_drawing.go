@@ -189,6 +189,28 @@ func (a *SquareAnnotation) SetDashPattern(p []float64) {
 	a.regenerateAP()
 }
 
+// InteriorColor returns the /IC fill color, or nil if absent.
+func (a *SquareAnnotation) InteriorColor() *Color {
+	arr, ok := a.dict["/IC"].(pdfArray)
+	if !ok || len(arr) != 3 {
+		return nil
+	}
+	r, _ := toFloat(arr[0])
+	g, _ := toFloat(arr[1])
+	bl, _ := toFloat(arr[2])
+	return &Color{R: r, G: g, B: bl, A: 1}
+}
+
+// SetInteriorColor writes /IC as an RGB array; nil removes the entry.
+func (a *SquareAnnotation) SetInteriorColor(c *Color) {
+	if c == nil {
+		delete(a.dict, "/IC")
+	} else {
+		a.dict["/IC"] = pdfArray{c.R, c.G, c.B}
+	}
+	a.regenerateAP()
+}
+
 // borderStyleName maps a BorderStyle to its PDF name code per Table 168.
 func borderStyleName(s BorderStyle) pdfName {
 	switch s {

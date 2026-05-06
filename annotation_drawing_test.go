@@ -188,3 +188,69 @@ func TestSquareAnnotationInsetRoundTrip(t *testing.T) {
 		t.Errorf("BorderStyle = %v, want BorderInset", got)
 	}
 }
+
+func TestSquareAnnotationUnderlineRoundTrip(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	sq := pdf.NewSquareAnnotation(page, pdf.Rectangle{LLX: 50, LLY: 600, URX: 200, URY: 700})
+	sq.SetBorderStyle(pdf.BorderUnderline)
+	if err := page.Annotations().Add(sq); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	sq2 := doc2.Pages()[0].Annotations().At(0).(*pdf.SquareAnnotation)
+	if got := sq2.BorderStyle(); got != pdf.BorderUnderline {
+		t.Errorf("BorderStyle = %v, want BorderUnderline", got)
+	}
+}
+
+func TestSquareAnnotationInteriorColorFill(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	sq := pdf.NewSquareAnnotation(page, pdf.Rectangle{LLX: 50, LLY: 600, URX: 200, URY: 700})
+	sq.SetColor(&pdf.Color{R: 0, G: 0, B: 1, A: 1})
+	sq.SetInteriorColor(&pdf.Color{R: 1, G: 1, B: 0, A: 1})
+	if err := page.Annotations().Add(sq); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	sq2 := doc2.Pages()[0].Annotations().At(0).(*pdf.SquareAnnotation)
+	ic := sq2.InteriorColor()
+	if ic == nil || ic.R != 1 || ic.G != 1 || ic.B != 0 {
+		t.Errorf("InteriorColor = %v, want yellow", ic)
+	}
+}
+
+func TestSquareAnnotationInteriorColorClear(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	sq := pdf.NewSquareAnnotation(page, pdf.Rectangle{LLX: 0, LLY: 0, URX: 10, URY: 10})
+	sq.SetInteriorColor(&pdf.Color{R: 1, G: 0, B: 0, A: 1})
+	sq.SetInteriorColor(nil)
+	if got := sq.InteriorColor(); got != nil {
+		t.Errorf("InteriorColor after clear = %v, want nil", got)
+	}
+}
+
+func TestSquareAnnotationNoXObjectLeak(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	sq := pdf.NewSquareAnnotation(page, pdf.Rectangle{LLX: 0, LLY: 0, URX: 10, URY: 10})
+	if err := page.Annotations().Add(sq); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	// Multiple property mutations — must reuse the same XObject objID.
+	sq.SetBorderWidth(2)
+	sq.SetBorderWidth(3)
+	sq.SetBorderStyle(pdf.BorderDashed)
+	sq.SetColor(&pdf.Color{R: 1, G: 0, B: 0, A: 1})
+	sq.SetInteriorColor(&pdf.Color{R: 0, G: 1, B: 0, A: 1})
+	removed := doc.RemoveUnusedObjects()
+	if removed != 0 {
+		t.Errorf("RemoveUnusedObjects removed %d objects after multiple setters; want 0 (mutate-in-place expected)", removed)
+	}
+}
