@@ -46,7 +46,7 @@ doc.Save("merged.pdf")
 - **Text watermarks** — apply text watermarks to all or selected pages with full styling control
 - **Stream input** — open PDFs from any `io.Reader`, not just file paths
 - **Forms (AcroForm)** — read, fill, and build from scratch all standard field types (text, checkbox, radio, combo box, list box, push button); programmatic field creation with `AddTextField`/`AddCheckbox`/`AddRadioGroup`/`AddComboBox`/`AddListBox`/`AddPushButton`; `RemoveField`; non-ASCII values encoded as UTF-16BE; viewers regenerate appearances via auto `/NeedAppearances=true`
-- **Annotations** — Link (with /A actions: GoToURI, GoTo, Named, SubmitForm, ResetForm, JavaScript-read-only), Highlight, Underline, StrikeOut, Squiggly. Page-scoped collection API (`Page.Annotations()` with `Add`/`At`/`Delete`/`DeleteAt`); existing form widgets surface as read-only `WidgetAnnotation`
+- **Annotations** — Link (with /A actions: GoToURI, GoTo, Named, SubmitForm, ResetForm, JavaScript-read-only), Highlight, Underline, StrikeOut, Squiggly. Page-scoped collection API (`Page.Annotations()` with `Add`/`At`/`Delete`/`DeleteAt`); existing form widgets surface as read-only `WidgetAnnotation`. Drawing primitives (Square/Circle/Line/Ink) with full ISO 32000-1 border styles (Solid/Dashed/Beveled/Inset/Underline) and 10 line-ending styles. `/AP` appearance streams generated automatically — annotations render natively in any spec-conforming viewer
 
 ## API Reference
 
@@ -308,7 +308,55 @@ page.Annotations().Add(submit)
 doc.Save("with_annotations.pdf")
 ```
 
-Supported subtypes in this release: `Link`, `Highlight`, `Underline`, `StrikeOut`, `Squiggly`. Existing form widgets surface as `WidgetAnnotation` for read-only inspection — to mutate form fields use the `Form` API. JavaScript actions are read-only (parsed but not constructible). Out of scope for this release: text/sticky-note, FreeText, drawing primitives (Square/Circle/Line/Ink), Stamp, FileAttachment, Redact, `/AP` appearance generation.
+Supported subtypes: `Link`, `Highlight`, `Underline`, `StrikeOut`, `Squiggly`, `Square`, `Circle`, `Line`, `Ink`. Existing form widgets surface as `WidgetAnnotation` for read-only inspection — to mutate form fields use the `Form` API. JavaScript actions are read-only (parsed but not constructible). Out of scope for this release: text/sticky-note, FreeText, Stamp, FileAttachment, Redact.
+
+### Drawing annotations (Square / Circle / Line / Ink)
+
+```go
+doc := pdf.NewDocument(595, 842)
+page, _ := doc.Page(1)
+
+// Filled rectangle with dashed red border
+sq := pdf.NewSquareAnnotation(page, pdf.Rectangle{LLX: 50, LLY: 700, URX: 200, URY: 800})
+sq.SetColor(&pdf.Color{R: 1, G: 0, B: 0, A: 1})
+sq.SetInteriorColor(&pdf.Color{R: 1, G: 1, B: 0, A: 1})
+sq.SetBorderStyle(pdf.BorderDashed)
+sq.SetDashPattern([]float64{4, 2})
+page.Annotations().Add(sq)
+
+// Blue circle, beveled border
+c := pdf.NewCircleAnnotation(page, pdf.Rectangle{LLX: 250, LLY: 700, URX: 400, URY: 800})
+c.SetColor(&pdf.Color{R: 0, G: 0, B: 1, A: 1})
+c.SetBorderStyle(pdf.BorderBeveled)
+c.SetBorderWidth(3)
+page.Annotations().Add(c)
+
+// Arrow line with closed-arrow heads on both ends
+ln := pdf.NewLineAnnotation(page,
+    pdf.Point{X: 50, Y: 600}, pdf.Point{X: 400, Y: 500})
+ln.SetStartLineEnding(pdf.LineEndingClosedArrow)
+ln.SetEndLineEnding(pdf.LineEndingClosedArrow)
+ln.SetInteriorColor(&pdf.Color{R: 1, G: 1, B: 0, A: 1})
+page.Annotations().Add(ln)
+
+// Smooth ink stroke (Catmull-Rom smoothing applied automatically for 3+ points)
+ink := pdf.NewInkAnnotation(page, [][]pdf.Point{
+    {{X: 50, Y: 400}, {X: 100, Y: 450}, {X: 150, Y: 420},
+     {X: 200, Y: 460}, {X: 250, Y: 400}},
+})
+ink.SetColor(&pdf.Color{R: 0, G: 0.5, B: 0, A: 1})
+page.Annotations().Add(ink)
+
+doc.Save("drawing.pdf")
+```
+
+Border styles available: `BorderSolid`, `BorderDashed`, `BorderBeveled`, `BorderInset`,
+`BorderUnderline` (per ISO 32000-1 Table 168). Line endings: `LineEndingNone`,
+`Square`, `Circle`, `Diamond`, `OpenArrow`, `ClosedArrow`, `Butt`, `ROpenArrow`,
+`RClosedArrow`, `Slash` (Table 176). Each property setter (`SetBorderStyle`,
+`SetColor`, `SetStrokes`, etc.) immediately regenerates the annotation's
+appearance stream so `/AP/N` is always in sync; no `/NeedAppearances=true`
+required, drawing annotations render in any spec-conforming viewer.
 
 ### Validation
 

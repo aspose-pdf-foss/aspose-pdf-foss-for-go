@@ -147,7 +147,7 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 
 **`annotation.go` / `annotation_action.go` / `annotation_link.go` / `annotation_markup.go`**
 - `Annotation` interface — `AnnotationType()`, `Rect()/SetRect()`, `Color()/SetColor()`, `Title()/SetTitle()`, `Contents()/SetContents()`, `PageIndex()`
-- `AnnotationType` enum — `AnnotationTypeUnknown`, `AnnotationTypeLink`, `AnnotationTypeHighlight`, `AnnotationTypeUnderline`, `AnnotationTypeStrikeOut`, `AnnotationTypeSquiggly`, `AnnotationTypeWidget`
+- `AnnotationType` enum — `AnnotationTypeUnknown`, `AnnotationTypeLink`, `AnnotationTypeHighlight`, `AnnotationTypeUnderline`, `AnnotationTypeStrikeOut`, `AnnotationTypeSquiggly`, `AnnotationTypeWidget`, `AnnotationTypeSquare`, `AnnotationTypeCircle`, `AnnotationTypeLine`, `AnnotationTypeInk`
 - Concrete types: `LinkAnnotation`, `HighlightAnnotation`, `UnderlineAnnotation`, `StrikeOutAnnotation`, `SquigglyAnnotation`, `WidgetAnnotation` (existing form fields, read-only via this surface), `GenericAnnotation` (catch-all for unsupported subtypes)
 - `AnnotationCollection` — `Add(a) error`, `At(i) Annotation`, `Delete(a) bool`, `DeleteAt(i) error`, `Count() int`, `All() []Annotation`. Add panics on nil; idempotent same-page; errors on cross-page re-attach
 - Constructors: `NewLinkAnnotation(page, rect)`, `NewHighlightAnnotation(page, rect)`, `NewUnderlineAnnotation(page, rect)`, `NewStrikeOutAnnotation(page, rect)`, `NewSquigglyAnnotation(page, rect)`
@@ -160,6 +160,16 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `NamedActionType` enum — `NamedActionFirstPage`, `NamedActionLastPage`, `NamedActionNextPage`, `NamedActionPrevPage`, `NamedActionPrint`
 - `SubmitFormFlags` bitfield per ISO 32000-1 Table 237 (`SubmitIncludeNoValueFields`, `SubmitExportFormat`, `SubmitGetMethod`, ...)
 - `QuadPoint` struct — `X1 Y1 X2 Y2 X3 Y3 X4 Y4` floats per ISO 32000-1 §12.5.6.10 (UL/UR/LL/LR corners). Used by `SetQuadPoints`/`QuadPoints` on the four markup types
+
+**`annotation_drawing.go` / `appearance.go` / `appearance_builder.go`**
+- `Point` struct — single point in PDF user-space (used for Line endpoints, Ink strokes)
+- `BorderStyle` enum — `BorderSolid`, `BorderDashed`, `BorderBeveled`, `BorderInset`, `BorderUnderline` per ISO 32000-1 Table 168
+- `LineEndingStyle` enum — 10 styles (`LineEndingNone`, `LineEndingSquare`, `LineEndingCircle`, `LineEndingDiamond`, `LineEndingOpenArrow`, `LineEndingClosedArrow`, `LineEndingButt`, `LineEndingROpenArrow`, `LineEndingRClosedArrow`, `LineEndingSlash`) per ISO 32000-1 Table 176
+- `SquareAnnotation` / `CircleAnnotation` — `BorderWidth/SetBorderWidth`, `BorderStyle/SetBorderStyle`, `DashPattern/SetDashPattern`, `Color/SetColor` (stroke), `InteriorColor/SetInteriorColor` (fill), inherited `Rect/SetRect/Title/SetTitle/Contents/SetContents/PageIndex`. Constructors `NewSquareAnnotation(page, rect)` / `NewCircleAnnotation(page, rect)`
+- `LineAnnotation` — `Start/SetStart`, `End/SetEnd`, `StartLineEnding/SetStartLineEnding`, `EndLineEnding/SetEndLineEnding`, `LeaderLineLength/SetLeaderLineLength`, `InteriorColor/SetInteriorColor`. Auto-bbox /Rect from endpoints + `9 × BorderWidth` padding. Constructor `NewLineAnnotation(page, start, end)`
+- `InkAnnotation` — `Strokes/SetStrokes` (defensive deep copy), `AddStroke`, full border surface. Catmull-Rom smoothed in /AP for 3+ point strokes; raw /InkList stored unchanged. Constructor `NewInkAnnotation(page, strokes)`
+- All four types regenerate `/AP/N` on every property setter; an explicit `RegenerateAppearance()` method is also exposed on each type
+- `/AP/N` infrastructure: every drawing annotation owns one Form XObject in `doc.objects`. Setters mutate the XObject in place — no leaks across multiple property changes
 
 **`validate.go`**
 - `Validate(inputPath)` — checks a PDF for structural integrity; returns `*ValidationReport` with a `Valid` flag and a list of `ValidationIssue` (code + message)
