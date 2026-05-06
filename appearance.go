@@ -439,9 +439,25 @@ func paintShape(b *appearanceBuilder, fill *Color) {
 	}
 }
 
-// generateInkAppearance produces /AP/N for an Ink annotation. This
-// phase renders strokes as polylines (m + l*). Catmull-Rom smoothing
-// for strokes with 3+ points is added in Task 16.
+// catmullRomControlPoints returns the cubic-Bezier control points C1, C2
+// for a Catmull-Rom segment from P1 to P2 with neighbors P0 (before P1)
+// and P3 (after P2). Tension factor 0.5 (standard Catmull-Rom).
+func catmullRomControlPoints(p0, p1, p2, p3 Point) (c1, c2 Point) {
+	c1 = Point{
+		X: p1.X + (p2.X-p0.X)/6,
+		Y: p1.Y + (p2.Y-p0.Y)/6,
+	}
+	c2 = Point{
+		X: p2.X - (p3.X-p1.X)/6,
+		Y: p2.Y - (p3.Y-p1.Y)/6,
+	}
+	return c1, c2
+}
+
+// generateInkAppearance produces /AP/N for an Ink annotation. Strokes
+// with 3+ points are rendered as Catmull-Rom smoothed cubic Beziers;
+// 2-point strokes are rendered as straight lines; shorter strokes are
+// skipped.
 func generateInkAppearance(a *InkAnnotation) *pdfStream {
 	rect := a.Rect()
 	width := rect.URX - rect.LLX
@@ -470,15 +486,52 @@ func generateInkAppearance(a *InkAnnotation) *pdfStream {
 			continue
 		}
 		// Translate to local /BBox-space.
-		b.MoveTo(stroke[0].X-rect.LLX, stroke[0].Y-rect.LLY)
-		for _, p := range stroke[1:] {
-			b.LineTo(p.X-rect.LLX, p.Y-rect.LLY)
+		local := make([]Point, len(stroke))
+		for i, p := range stroke {
+			local[i] = Point{X: p.X - rect.LLX, Y: p.Y - rect.LLY}
 		}
-		b.Stroke()
+		emitInkStroke(b, local)
 	}
 	b.PopState()
 
 	return makeFormXObject(b.Bytes(), Rectangle{URX: width, URY: height})
+}
+
+// emitInkStroke renders one stroke. With 2 points: simple m+l. With 3+
+// points: Catmull-Rom smoothing into cubic Beziers. Phantom points at
+// the ends are produced by mirroring the first / last segment via
+// duplication (P[-1] = P[0], P[n] = P[n-1]).
+func emitInkStroke(b *appearanceBuilder, points []Point) {
+	n := len(points)
+	if n == 0 {
+		return
+	}
+	if n == 1 {
+		// A single point produces no visible stroke; skip.
+		return
+	}
+	if n == 2 {
+		b.MoveTo(points[0].X, points[0].Y)
+		b.LineTo(points[1].X, points[1].Y)
+		b.Stroke()
+		return
+	}
+	// 3+ points: Catmull-Rom. Phantom points: P[-1] = P[0], P[n] = P[n-1].
+	getPoint := func(i int) Point {
+		if i < 0 {
+			return points[0]
+		}
+		if i >= n {
+			return points[n-1]
+		}
+		return points[i]
+	}
+	b.MoveTo(points[0].X, points[0].Y)
+	for i := 0; i < n-1; i++ {
+		c1, c2 := catmullRomControlPoints(getPoint(i-1), getPoint(i), getPoint(i+1), getPoint(i+2))
+		b.CurveTo(c1.X, c1.Y, c2.X, c2.Y, points[i+1].X, points[i+1].Y)
+	}
+	b.Stroke()
 }
 
 // setAppearanceN replaces /AP/N on the annotation. If /AP/N already

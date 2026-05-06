@@ -1,6 +1,7 @@
 package asposepdf
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -76,5 +77,26 @@ func TestDrawLineEndingClosedArrowFills(t *testing.T) {
 	out := string(b.Bytes())
 	if !strings.Contains(out, "B\n") && !strings.Contains(out, "b\n") {
 		t.Errorf("ClosedArrow should fill+stroke (B or b), got %q", out)
+	}
+}
+
+func TestCatmullRomToBezierSimple(t *testing.T) {
+	// 4 collinear points along x-axis: P0=(0,0) P1=(1,0) P2=(2,0) P3=(3,0).
+	// Segment P1→P2: control points should be on the same line.
+	// C1 = P1 + (P2 - P0)/6 = (1,0) + ((2,0)-(0,0))/6 = (1+2/6, 0)
+	// C2 = P2 - (P3 - P1)/6 = (2,0) - ((3,0)-(1,0))/6 = (2-2/6, 0)
+	c1, c2 := catmullRomControlPoints(
+		Point{X: 0, Y: 0},
+		Point{X: 1, Y: 0},
+		Point{X: 2, Y: 0},
+		Point{X: 3, Y: 0},
+	)
+	wantC1X := 1 + 2.0/6.0
+	wantC2X := 2 - 2.0/6.0
+	if math.Abs(c1.X-wantC1X) > 1e-9 || c1.Y != 0 {
+		t.Errorf("c1 = %+v, want {%.6f 0}", c1, wantC1X)
+	}
+	if math.Abs(c2.X-wantC2X) > 1e-9 || c2.Y != 0 {
+		t.Errorf("c2 = %+v, want {%.6f 0}", c2, wantC2X)
 	}
 }

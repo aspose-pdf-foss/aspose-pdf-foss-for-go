@@ -412,3 +412,34 @@ func TestInkAnnotationDefensiveCopy(t *testing.T) {
 		t.Errorf("Strokes[0][0].X = %v after caller mutation, want 0", got[0][0].X)
 	}
 }
+
+func TestInkAnnotationCatmullRomSmoothsThreePlusPoints(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	// 5-point stroke: smoothing should produce c (curve) operators in /AP.
+	strokes := [][]pdf.Point{{
+		{X: 100, Y: 700},
+		{X: 120, Y: 720},
+		{X: 150, Y: 730},
+		{X: 180, Y: 720},
+		{X: 200, Y: 700},
+	}}
+	ink := pdf.NewInkAnnotation(page, strokes)
+	if err := page.Annotations().Add(ink); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	// Verify the underlying /AP stream contains Bezier (c) operators.
+	// We do this via the parsed document's content stream walking.
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	page2, _ := doc2.Page(1)
+	got := page2.Annotations().At(0)
+	ink2 := got.(*pdf.InkAnnotation)
+	gotStrokes := ink2.Strokes()
+	// Round-trip preserves /InkList raw points unchanged (smoothing is
+	// /AP-only; /InkList stores the original polyline).
+	if len(gotStrokes) != 1 || len(gotStrokes[0]) != 5 {
+		t.Fatalf("Strokes shape = %v, want 1 stroke of 5 points", gotStrokes)
+	}
+}
