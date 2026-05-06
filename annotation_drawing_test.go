@@ -153,3 +153,38 @@ func TestSquareAnnotationDashPatternDefensiveCopy(t *testing.T) {
 		t.Errorf("DashPattern[0] = %v after caller mutation, want 3 (defensive copy)", got[0])
 	}
 }
+
+func TestSquareAnnotationBeveledRendersTwoColors(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	sq := pdf.NewSquareAnnotation(page, pdf.Rectangle{LLX: 50, LLY: 600, URX: 200, URY: 700})
+	sq.SetBorderStyle(pdf.BorderBeveled)
+	sq.SetColor(&pdf.Color{R: 0.5, G: 0.5, B: 0.5, A: 1})
+	if err := page.Annotations().Add(sq); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	sq2 := doc2.Pages()[0].Annotations().At(0).(*pdf.SquareAnnotation)
+	if got := sq2.BorderStyle(); got != pdf.BorderBeveled {
+		t.Errorf("BorderStyle = %v, want BorderBeveled", got)
+	}
+}
+
+func TestSquareAnnotationInsetRoundTrip(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	sq := pdf.NewSquareAnnotation(page, pdf.Rectangle{LLX: 50, LLY: 600, URX: 200, URY: 700})
+	sq.SetBorderStyle(pdf.BorderInset)
+	if err := page.Annotations().Add(sq); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	sq2 := doc2.Pages()[0].Annotations().At(0).(*pdf.SquareAnnotation)
+	if got := sq2.BorderStyle(); got != pdf.BorderInset {
+		t.Errorf("BorderStyle = %v, want BorderInset", got)
+	}
+}

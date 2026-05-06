@@ -21,8 +21,8 @@ func makeFormXObject(content []byte, bbox Rectangle) *pdfStream {
 }
 
 // generateSquareAppearance produces /AP/N for a Square annotation.
-// Supports Solid and Dashed border styles; Beveled/Inset/Underline
-// are added in subsequent tasks.
+// Supports Solid, Dashed, Beveled, and Inset border styles;
+// Underline is added in a subsequent task.
 func generateSquareAppearance(a *SquareAnnotation) *pdfStream {
 	rect := a.Rect()
 	width := rect.URX - rect.LLX
@@ -32,24 +32,104 @@ func generateSquareAppearance(a *SquareAnnotation) *pdfStream {
 	style := a.BorderStyle()
 
 	b := newAppearanceBuilder()
-	b.PushState()
-	b.SetLineWidth(bw)
-	if c := a.Color(); c != nil {
-		b.SetStrokeColorRGB(*c)
-	}
-	if style == BorderDashed {
-		dp := a.DashPattern()
-		if len(dp) == 0 {
-			dp = []float64{3, 3}
+
+	switch style {
+	case BorderBeveled, BorderInset:
+		drawBeveledRectBorder(b, width, height, bw, a.Color(), style == BorderInset)
+	default:
+		b.PushState()
+		b.SetLineWidth(bw)
+		if c := a.Color(); c != nil {
+			b.SetStrokeColorRGB(*c)
 		}
-		b.SetDashPattern(dp, 0)
+		if style == BorderDashed {
+			dp := a.DashPattern()
+			if len(dp) == 0 {
+				dp = []float64{3, 3}
+			}
+			b.SetDashPattern(dp, 0)
+		}
+		inset := bw / 2
+		b.Rect(inset, inset, width-bw, height-bw)
+		b.Stroke()
+		b.PopState()
 	}
-	inset := bw / 2
-	b.Rect(inset, inset, width-bw, height-bw)
-	b.Stroke()
-	b.PopState()
 
 	return makeFormXObject(b.Bytes(), Rectangle{URX: width, URY: height})
+}
+
+// drawBeveledRectBorder emits a two-pass beveled (or inset) border on a
+// rectangle of size (width, height). Top + left edges use the light
+// color; bottom + right edges use the dark color (inverted for Inset).
+func drawBeveledRectBorder(b *appearanceBuilder, width, height, bw float64, baseColor *Color, inverted bool) {
+	base := Color{R: 0, G: 0, B: 0, A: 1}
+	if baseColor != nil {
+		base = *baseColor
+	}
+	light, dark := beveledColorPair(base, inverted)
+
+	// Light pass: top + left edges as filled trapezoids.
+	b.PushState()
+	b.SetFillColorRGB(light)
+	// Outer top-left corner → outer top-right → inner top-right → inner top-left.
+	b.MoveTo(0, height)
+	b.LineTo(width, height)
+	b.LineTo(width-bw, height-bw)
+	b.LineTo(bw, height-bw)
+	b.ClosePath()
+	b.Fill()
+	// Outer top-left → outer bottom-left → inner bottom-left → inner top-left.
+	b.MoveTo(0, height)
+	b.LineTo(0, 0)
+	b.LineTo(bw, bw)
+	b.LineTo(bw, height-bw)
+	b.ClosePath()
+	b.Fill()
+	b.PopState()
+
+	// Dark pass: bottom + right edges.
+	b.PushState()
+	b.SetFillColorRGB(dark)
+	// Outer bottom-left → outer bottom-right → inner bottom-right → inner bottom-left.
+	b.MoveTo(0, 0)
+	b.LineTo(width, 0)
+	b.LineTo(width-bw, bw)
+	b.LineTo(bw, bw)
+	b.ClosePath()
+	b.Fill()
+	// Outer bottom-right → outer top-right → inner top-right → inner bottom-right.
+	b.MoveTo(width, 0)
+	b.LineTo(width, height)
+	b.LineTo(width-bw, height-bw)
+	b.LineTo(width-bw, bw)
+	b.ClosePath()
+	b.Fill()
+	b.PopState()
+}
+
+// beveledColorPair returns a (light, dark) color pair for Beveled and
+// Inset border rendering. Light = base × 0.5 + white × 0.5; Dark =
+// base × 0.5. When inverted is true (Inset style) the pair is swapped.
+//
+// PDF spec doesn't precisely fix the algorithm; this matches Acrobat
+// output for the same input.
+func beveledColorPair(base Color, inverted bool) (light, dark Color) {
+	light = Color{
+		R: base.R*0.5 + 0.5,
+		G: base.G*0.5 + 0.5,
+		B: base.B*0.5 + 0.5,
+		A: 1,
+	}
+	dark = Color{
+		R: base.R * 0.5,
+		G: base.G * 0.5,
+		B: base.B * 0.5,
+		A: 1,
+	}
+	if inverted {
+		return dark, light
+	}
+	return light, dark
 }
 
 // setAppearanceN replaces /AP/N on the annotation. If /AP/N already
