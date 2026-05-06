@@ -295,9 +295,8 @@ func drawBeveledEllipseBorder(b *appearanceBuilder, cx, cy, rx, ry, bw float64, 
 	b.PopState()
 }
 
-// generateLineAppearance produces /AP/N for a Line annotation. This
-// phase covers the line geometry only — line endings are added in
-// Task 14 after the drawLineEnding helper lands in Task 13.
+// generateLineAppearance produces /AP/N for a Line annotation.
+// Renders the line stroke and then both line-ending shapes (if set).
 func generateLineAppearance(a *LineAnnotation) *pdfStream {
 	rect := a.Rect()
 	width := rect.URX - rect.LLX
@@ -313,6 +312,10 @@ func generateLineAppearance(a *LineAnnotation) *pdfStream {
 	sy := start.Y - rect.LLY
 	ex := end.X - rect.LLX
 	ey := end.Y - rect.LLY
+
+	dx := ex - sx
+	dy := ey - sy
+	theta := math.Atan2(dy, dx)
 
 	b := newAppearanceBuilder()
 	b.PushState()
@@ -331,6 +334,12 @@ func generateLineAppearance(a *LineAnnotation) *pdfStream {
 	b.LineTo(ex, ey)
 	b.Stroke()
 	b.PopState()
+
+	// Line endings. theta points from start toward end; for the start
+	// ending we rotate by theta+π so it points "inward" along the line.
+	ic := a.InteriorColor()
+	drawLineEnding(b, a.StartLineEnding(), sx, sy, theta+math.Pi, bw, ic)
+	drawLineEnding(b, a.EndLineEnding(), ex, ey, theta, bw, ic)
 
 	return makeFormXObject(b.Bytes(), Rectangle{URX: width, URY: height})
 }

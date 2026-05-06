@@ -413,6 +413,136 @@ func (a *LineAnnotation) RegenerateAppearance() {
 	a.regenerateAP()
 }
 
+// StartLineEnding returns the style applied to the start of the line.
+// Defaults to LineEndingNone if /LE is absent or malformed.
+func (a *LineAnnotation) StartLineEnding() LineEndingStyle {
+	arr, _ := a.dict["/LE"].(pdfArray)
+	if len(arr) < 1 {
+		return LineEndingNone
+	}
+	n, _ := arr[0].(pdfName)
+	return parseLineEndingName(n)
+}
+
+// EndLineEnding returns the style applied to the end of the line.
+func (a *LineAnnotation) EndLineEnding() LineEndingStyle {
+	arr, _ := a.dict["/LE"].(pdfArray)
+	if len(arr) < 2 {
+		return LineEndingNone
+	}
+	n, _ := arr[1].(pdfName)
+	return parseLineEndingName(n)
+}
+
+// SetStartLineEnding sets the start-side line-ending style.
+func (a *LineAnnotation) SetStartLineEnding(s LineEndingStyle) {
+	end := a.EndLineEnding()
+	a.dict["/LE"] = pdfArray{lineEndingName(s), lineEndingName(end)}
+	a.regenerateAP()
+}
+
+// SetEndLineEnding sets the end-side line-ending style.
+func (a *LineAnnotation) SetEndLineEnding(s LineEndingStyle) {
+	start := a.StartLineEnding()
+	a.dict["/LE"] = pdfArray{lineEndingName(start), lineEndingName(s)}
+	a.regenerateAP()
+}
+
+// InteriorColor returns the /IC fill color (used for filled line
+// endings: ClosedArrow, RClosedArrow, Square, Circle, Diamond).
+// Returns nil if absent.
+func (a *LineAnnotation) InteriorColor() *Color {
+	arr, ok := a.dict["/IC"].(pdfArray)
+	if !ok || len(arr) != 3 {
+		return nil
+	}
+	r, _ := toFloat(arr[0])
+	g, _ := toFloat(arr[1])
+	bl, _ := toFloat(arr[2])
+	return &Color{R: r, G: g, B: bl, A: 1}
+}
+
+// SetInteriorColor writes /IC as an RGB array; nil removes the entry.
+func (a *LineAnnotation) SetInteriorColor(c *Color) {
+	if c == nil {
+		delete(a.dict, "/IC")
+	} else {
+		a.dict["/IC"] = pdfArray{c.R, c.G, c.B}
+	}
+	a.regenerateAP()
+}
+
+// LeaderLineLength returns the /LL value (0 if absent). Used for
+// dimension-line annotations where the line is offset from the
+// measured points by this much.
+func (a *LineAnnotation) LeaderLineLength() float64 {
+	v, err := toFloat(a.dict["/LL"])
+	if err != nil {
+		return 0
+	}
+	return v
+}
+
+// SetLeaderLineLength writes /LL. Zero removes the entry.
+func (a *LineAnnotation) SetLeaderLineLength(l float64) {
+	if l == 0 {
+		delete(a.dict, "/LL")
+	} else {
+		a.dict["/LL"] = l
+	}
+	a.regenerateAP()
+}
+
+// lineEndingName maps a LineEndingStyle to its PDF spec name per Table 176.
+func lineEndingName(s LineEndingStyle) pdfName {
+	switch s {
+	case LineEndingSquare:
+		return "/Square"
+	case LineEndingCircle:
+		return "/Circle"
+	case LineEndingDiamond:
+		return "/Diamond"
+	case LineEndingOpenArrow:
+		return "/OpenArrow"
+	case LineEndingClosedArrow:
+		return "/ClosedArrow"
+	case LineEndingButt:
+		return "/Butt"
+	case LineEndingROpenArrow:
+		return "/ROpenArrow"
+	case LineEndingRClosedArrow:
+		return "/RClosedArrow"
+	case LineEndingSlash:
+		return "/Slash"
+	}
+	return "/None"
+}
+
+// parseLineEndingName reverses lineEndingName.
+func parseLineEndingName(n pdfName) LineEndingStyle {
+	switch n {
+	case "/Square":
+		return LineEndingSquare
+	case "/Circle":
+		return LineEndingCircle
+	case "/Diamond":
+		return LineEndingDiamond
+	case "/OpenArrow":
+		return LineEndingOpenArrow
+	case "/ClosedArrow":
+		return LineEndingClosedArrow
+	case "/Butt":
+		return LineEndingButt
+	case "/ROpenArrow":
+		return LineEndingROpenArrow
+	case "/RClosedArrow":
+		return LineEndingRClosedArrow
+	case "/Slash":
+		return LineEndingSlash
+	}
+	return LineEndingNone
+}
+
 // borderStyleName maps a BorderStyle to its PDF name code per Table 168.
 func borderStyleName(s BorderStyle) pdfName {
 	switch s {

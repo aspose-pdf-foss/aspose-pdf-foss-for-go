@@ -316,3 +316,57 @@ func TestCircleAnnotationRoundTrip(t *testing.T) {
 		t.Errorf("InteriorColor = %v", ic)
 	}
 }
+
+func TestLineAnnotationAllEndingStyles(t *testing.T) {
+	for i, name := range []string{
+		"None", "Square", "Circle", "Diamond",
+		"OpenArrow", "ClosedArrow", "Butt",
+		"ROpenArrow", "RClosedArrow", "Slash",
+	} {
+		style := pdf.LineEndingStyle(i)
+		t.Run(name, func(t *testing.T) {
+			doc := pdf.NewDocument(595, 842)
+			page, _ := doc.Page(1)
+			ln := pdf.NewLineAnnotation(page, pdf.Point{X: 100, Y: 700}, pdf.Point{X: 300, Y: 600})
+			ln.SetStartLineEnding(style)
+			ln.SetEndLineEnding(style)
+			if err := page.Annotations().Add(ln); err != nil {
+				t.Fatalf("Add: %v", err)
+			}
+			var buf bytes.Buffer
+			doc.WriteTo(&buf)
+			doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+			ln2 := doc2.Pages()[0].Annotations().At(0).(*pdf.LineAnnotation)
+			if got := ln2.StartLineEnding(); got != style {
+				t.Errorf("StartLineEnding = %v, want %v", got, style)
+			}
+			if got := ln2.EndLineEnding(); got != style {
+				t.Errorf("EndLineEnding = %v, want %v", got, style)
+			}
+		})
+	}
+}
+
+func TestLineAnnotationInteriorColorAndLeaderLine(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	ln := pdf.NewLineAnnotation(page, pdf.Point{X: 100, Y: 700}, pdf.Point{X: 300, Y: 700})
+	ln.SetStartLineEnding(pdf.LineEndingClosedArrow)
+	ln.SetEndLineEnding(pdf.LineEndingClosedArrow)
+	ln.SetInteriorColor(&pdf.Color{R: 1, G: 1, B: 0, A: 1})
+	ln.SetLeaderLineLength(10)
+	if err := page.Annotations().Add(ln); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	ln2 := doc2.Pages()[0].Annotations().At(0).(*pdf.LineAnnotation)
+	ic := ln2.InteriorColor()
+	if ic == nil || ic.R != 1 {
+		t.Errorf("InteriorColor = %v", ic)
+	}
+	if ll := ln2.LeaderLineLength(); ll != 10 {
+		t.Errorf("LeaderLineLength = %v, want 10", ll)
+	}
+}
