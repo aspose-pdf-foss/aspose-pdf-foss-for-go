@@ -543,6 +543,130 @@ func parseLineEndingName(n pdfName) LineEndingStyle {
 	return LineEndingNone
 }
 
+// InkAnnotation draws a series of free-form strokes — typically used to
+// represent handwritten ink. Each stroke is a sequence of points
+// rendered as a polyline; in Task 16 strokes with 3+ points get
+// Catmull-Rom smoothing for visual quality.
+type InkAnnotation struct {
+	drawingAnnotationBase
+}
+
+func (a *InkAnnotation) AnnotationType() AnnotationType { return AnnotationTypeInk }
+
+// NewInkAnnotation builds an unbound ink annotation. Page must be
+// non-nil. Each inner slice is one continuous stroke. The /Rect entry
+// is auto-computed as the bounding box of all stroke points plus
+// padding equal to BorderWidth.
+func NewInkAnnotation(page *Page, strokes [][]Point) *InkAnnotation {
+	if page == nil {
+		panic("NewInkAnnotation: nil page")
+	}
+	a := &InkAnnotation{drawingAnnotationBase: drawingAnnotationBase{
+		annotationBase: annotationBase{
+			dict: pdfDict{
+				"/Type":    pdfName("/Annot"),
+				"/Subtype": pdfName("/Ink"),
+			},
+			doc:  page.doc,
+			page: page,
+		},
+	}}
+	a.regenerate = a.regenerateAP
+	a.SetStrokes(strokes)
+	return a
+}
+
+// Strokes returns a deep copy of /InkList. Mutating the result does
+// not affect the annotation.
+func (a *InkAnnotation) Strokes() [][]Point {
+	arr, _ := a.dict["/InkList"].(pdfArray)
+	out := make([][]Point, 0, len(arr))
+	for _, strokeAny := range arr {
+		strokeArr, _ := strokeAny.(pdfArray)
+		stroke := make([]Point, 0, len(strokeArr)/2)
+		for i := 0; i+1 < len(strokeArr); i += 2 {
+			x, _ := toFloat(strokeArr[i])
+			y, _ := toFloat(strokeArr[i+1])
+			stroke = append(stroke, Point{X: x, Y: y})
+		}
+		out = append(out, stroke)
+	}
+	return out
+}
+
+// SetStrokes writes /InkList. The slices are deep-copied; the caller
+// may safely mutate after this returns.
+func (a *InkAnnotation) SetStrokes(strokes [][]Point) {
+	if len(strokes) == 0 {
+		delete(a.dict, "/InkList")
+	} else {
+		outer := make(pdfArray, 0, len(strokes))
+		for _, stroke := range strokes {
+			inner := make(pdfArray, 0, len(stroke)*2)
+			for _, p := range stroke {
+				inner = append(inner, p.X, p.Y)
+			}
+			outer = append(outer, inner)
+		}
+		a.dict["/InkList"] = outer
+	}
+	a.recomputeRect()
+	a.regenerateAP()
+}
+
+// AddStroke appends a single stroke to the annotation. Convenience for
+// incremental construction.
+func (a *InkAnnotation) AddStroke(stroke []Point) {
+	current := a.Strokes()
+	current = append(current, stroke)
+	a.SetStrokes(current)
+}
+
+// SetBorderWidth overrides drawingAnnotationBase.SetBorderWidth to also
+// recompute /Rect (padding scales with BorderWidth).
+func (a *InkAnnotation) SetBorderWidth(w float64) {
+	a.drawingAnnotationBase.SetBorderWidth(w)
+	a.recomputeRect()
+	a.regenerateAP()
+}
+
+// recomputeRect updates /Rect to the bounding box of all points across
+// all strokes plus padding equal to the stroke width.
+func (a *InkAnnotation) recomputeRect() {
+	strokes := a.Strokes()
+	if len(strokes) == 0 {
+		a.dict["/Rect"] = pdfArray{0.0, 0.0, 0.0, 0.0}
+		return
+	}
+	first := true
+	var llx, lly, urx, ury float64
+	for _, stroke := range strokes {
+		for _, p := range stroke {
+			if first {
+				llx, lly, urx, ury = p.X, p.Y, p.X, p.Y
+				first = false
+				continue
+			}
+			llx = min(llx, p.X)
+			lly = min(lly, p.Y)
+			urx = max(urx, p.X)
+			ury = max(ury, p.Y)
+		}
+	}
+	pad := a.BorderWidth()
+	a.dict["/Rect"] = pdfArray{llx - pad, lly - pad, urx + pad, ury + pad}
+}
+
+// regenerateAP rebuilds /AP/N from the annotation's current properties.
+func (a *InkAnnotation) regenerateAP() {
+	setAppearanceN(&a.annotationBase, generateInkAppearance(a))
+}
+
+// RegenerateAppearance forces /AP/N to be rebuilt from current properties.
+func (a *InkAnnotation) RegenerateAppearance() {
+	a.regenerateAP()
+}
+
 // borderStyleName maps a BorderStyle to its PDF name code per Table 168.
 func borderStyleName(s BorderStyle) pdfName {
 	switch s {

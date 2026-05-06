@@ -439,6 +439,48 @@ func paintShape(b *appearanceBuilder, fill *Color) {
 	}
 }
 
+// generateInkAppearance produces /AP/N for an Ink annotation. This
+// phase renders strokes as polylines (m + l*). Catmull-Rom smoothing
+// for strokes with 3+ points is added in Task 16.
+func generateInkAppearance(a *InkAnnotation) *pdfStream {
+	rect := a.Rect()
+	width := rect.URX - rect.LLX
+	height := rect.URY - rect.LLY
+
+	bw := a.BorderWidth()
+	style := a.BorderStyle()
+	strokes := a.Strokes()
+
+	b := newAppearanceBuilder()
+	b.PushState()
+	b.SetLineWidth(bw)
+	if c := a.Color(); c != nil {
+		b.SetStrokeColorRGB(*c)
+	}
+	if style == BorderDashed {
+		dp := a.DashPattern()
+		if len(dp) == 0 {
+			dp = []float64{3, 3}
+		}
+		b.SetDashPattern(dp, 0)
+	}
+
+	for _, stroke := range strokes {
+		if len(stroke) < 2 {
+			continue
+		}
+		// Translate to local /BBox-space.
+		b.MoveTo(stroke[0].X-rect.LLX, stroke[0].Y-rect.LLY)
+		for _, p := range stroke[1:] {
+			b.LineTo(p.X-rect.LLX, p.Y-rect.LLY)
+		}
+		b.Stroke()
+	}
+	b.PopState()
+
+	return makeFormXObject(b.Bytes(), Rectangle{URX: width, URY: height})
+}
+
 // setAppearanceN replaces /AP/N on the annotation. If /AP/N already
 // references an XObject in doc.objects, that object is mutated in place
 // (no new objID allocated, no orphans). Otherwise a fresh XObject is

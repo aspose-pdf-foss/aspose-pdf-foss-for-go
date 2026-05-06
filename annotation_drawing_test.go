@@ -370,3 +370,45 @@ func TestLineAnnotationInteriorColorAndLeaderLine(t *testing.T) {
 		t.Errorf("LeaderLineLength = %v, want 10", ll)
 	}
 }
+
+func TestInkAnnotationTwoPointStrokeRoundTrip(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	strokes := [][]pdf.Point{
+		{{X: 100, Y: 700}, {X: 200, Y: 750}},
+		{{X: 50, Y: 600}, {X: 150, Y: 650}},
+	}
+	ink := pdf.NewInkAnnotation(page, strokes)
+	ink.SetColor(&pdf.Color{R: 0, G: 0, B: 1, A: 1})
+	ink.SetBorderWidth(1.5)
+	if err := page.Annotations().Add(ink); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	got := doc2.Pages()[0].Annotations().At(0)
+	if got.AnnotationType() != pdf.AnnotationTypeInk {
+		t.Errorf("type = %v, want AnnotationTypeInk", got.AnnotationType())
+	}
+	ink2 := got.(*pdf.InkAnnotation)
+	gotStrokes := ink2.Strokes()
+	if len(gotStrokes) != 2 {
+		t.Fatalf("Strokes len = %d, want 2", len(gotStrokes))
+	}
+	if len(gotStrokes[0]) != 2 || gotStrokes[0][0].X != 100 {
+		t.Errorf("Strokes[0] = %v", gotStrokes[0])
+	}
+}
+
+func TestInkAnnotationDefensiveCopy(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	in := [][]pdf.Point{{{X: 0, Y: 0}, {X: 10, Y: 10}}}
+	ink := pdf.NewInkAnnotation(page, in)
+	in[0][0].X = 99 // mutate caller's slice
+	got := ink.Strokes()
+	if got[0][0].X != 0 {
+		t.Errorf("Strokes[0][0].X = %v after caller mutation, want 0", got[0][0].X)
+	}
+}
