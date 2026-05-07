@@ -52,17 +52,31 @@ func generateFreeTextAppearance(a *FreeTextAnnotation) *pdfStream {
 		drawStandardRectBorder(b, width, height, a.BorderStyle(), bw, a.DashPattern(), a.Color())
 	}
 
-	// 3. Text in inner rect.
-	var pad float64
-	if skipChrome {
-		pad = 0 // typewriter has no border/padding chrome
-	} else {
-		pad = bw
-		if pad < 2 {
-			pad = 2 // at least 2 pt of margin even with 0-width border
+	// 3. Determine text rendering rect.
+	var innerLocal Rectangle
+	if intent == FreeTextIntentCallout {
+		// Use /RD-derived inner rect, translated to local /BBox space.
+		innerPage := a.InnerRect()
+		innerLocal = Rectangle{
+			LLX: innerPage.LLX - rect.LLX,
+			LLY: innerPage.LLY - rect.LLY,
+			URX: innerPage.URX - rect.LLX,
+			URY: innerPage.URY - rect.LLY,
 		}
+	} else {
+		var pad float64
+		if skipChrome {
+			pad = 0 // typewriter has no border/padding chrome
+		} else {
+			pad = bw
+			if pad < 2 {
+				pad = 2 // at least 2 pt of margin even with 0-width border
+			}
+		}
+		innerLocal = Rectangle{LLX: pad, LLY: pad, URX: width - pad, URY: height - pad}
 	}
-	innerLocal := Rectangle{LLX: pad, LLY: pad, URX: width - pad, URY: height - pad}
+
+	// 4. Render text.
 	contents := a.Contents()
 	if contents != "" {
 		// renderTextInBuilder uses style.Color for text color (separate
@@ -77,7 +91,46 @@ func generateFreeTextAppearance(a *FreeTextAnnotation) *pdfStream {
 		_ = renderTextInBuilder(b, resources, contents, style, innerLocal, resolve, "", "")
 	}
 
+	// 5. Callout line (only for callout intent).
+	if intent == FreeTextIntentCallout {
+		ptsPage := a.CalloutPoints()
+		if len(ptsPage) >= 2 {
+			ptsLocal := make([]Point, len(ptsPage))
+			for i, p := range ptsPage {
+				ptsLocal[i] = Point{X: p.X - rect.LLX, Y: p.Y - rect.LLY}
+			}
+			startLocal := nearestInnerEdgeMidpoint(innerLocal, ptsLocal[0])
+			drawCalloutLine(b, startLocal, ptsLocal, bw, a.Color(), a.EndLineEnding())
+		}
+	}
+
 	return makeFormXObjectWithResources(b.Bytes(), Rectangle{URX: width, URY: height}, resources)
+}
+
+// nearestInnerEdgeMidpoint returns the midpoint of the inner rect's
+// edge nearest to target. Used as the implicit "start" point for a
+// callout line, per ISO 32000-1 §12.5.6.6.
+func nearestInnerEdgeMidpoint(inner Rectangle, target Point) Point {
+	midX := (inner.LLX + inner.URX) / 2
+	midY := (inner.LLY + inner.URY) / 2
+	candidates := []Point{
+		{X: midX, Y: inner.LLY},  // bottom
+		{X: inner.URX, Y: midY},  // right
+		{X: midX, Y: inner.URY},  // top
+		{X: inner.LLX, Y: midY},  // left
+	}
+	bestIdx := 0
+	bestDist := math.Inf(1)
+	for i, p := range candidates {
+		dx := p.X - target.X
+		dy := p.Y - target.Y
+		d := dx*dx + dy*dy
+		if d < bestDist {
+			bestDist = d
+			bestIdx = i
+		}
+	}
+	return candidates[bestIdx]
 }
 
 // drawStandardRectBorder renders a rectangular border using the given

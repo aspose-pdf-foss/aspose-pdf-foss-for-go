@@ -299,6 +299,109 @@ func (a *FreeTextAnnotation) RegenerateAppearance() {
 	a.regenerateAP()
 }
 
+// CalloutPoints returns the /CL knee + endpoint points (page space).
+// Returns nil if /CL is absent or malformed. Format: 2-element slice
+// (knee, endpoint) for /CL = [x1 y1 x2 y2]; 3-element slice (knee1,
+// knee2, endpoint) for /CL = [x1 y1 x2 y2 x3 y3].
+func (a *FreeTextAnnotation) CalloutPoints() []Point {
+	arr, ok := a.dict["/CL"].(pdfArray)
+	if !ok {
+		return nil
+	}
+	if len(arr) != 4 && len(arr) != 6 {
+		return nil
+	}
+	out := make([]Point, 0, len(arr)/2)
+	for i := 0; i+1 < len(arr); i += 2 {
+		x, _ := toFloat(arr[i])
+		y, _ := toFloat(arr[i+1])
+		out = append(out, Point{X: x, Y: y})
+	}
+	return out
+}
+
+// SetCalloutPoints writes /CL (must be 2 or 3 points; otherwise the
+// call is a no-op). Auto-sets Intent to FreeTextIntentCallout. The
+// caller passes points in page-space coordinates; round-trip preserves
+// them as written.
+func (a *FreeTextAnnotation) SetCalloutPoints(pts []Point) {
+	if len(pts) != 2 && len(pts) != 3 {
+		return
+	}
+	arr := make(pdfArray, 0, len(pts)*2)
+	for _, p := range pts {
+		arr = append(arr, p.X, p.Y)
+	}
+	a.dict["/CL"] = arr
+	a.dict["/IT"] = pdfName("/FreeTextCallout")
+	a.regenerateAP()
+}
+
+// EndLineEnding returns the /LE entry as a LineEndingStyle. Returns
+// LineEndingNone if absent or unrecognized.
+func (a *FreeTextAnnotation) EndLineEnding() LineEndingStyle {
+	n, ok := a.dict["/LE"].(pdfName)
+	if !ok {
+		return LineEndingNone
+	}
+	return parseLineEndingName(n)
+}
+
+// SetEndLineEnding writes /LE for the callout endpoint shape.
+func (a *FreeTextAnnotation) SetEndLineEnding(s LineEndingStyle) {
+	if s == LineEndingNone {
+		delete(a.dict, "/LE")
+	} else {
+		a.dict["/LE"] = lineEndingName(s)
+	}
+	a.regenerateAP()
+}
+
+// InnerRect returns the inner text rectangle derived from /RD entry.
+// If /RD is absent, returns the full annotation /Rect.
+func (a *FreeTextAnnotation) InnerRect() Rectangle {
+	rect := a.Rect()
+	rd, ok := a.dict["/RD"].(pdfArray)
+	if !ok || len(rd) != 4 {
+		return rect
+	}
+	left, _ := toFloat(rd[0])
+	top, _ := toFloat(rd[1])
+	right, _ := toFloat(rd[2])
+	bottom, _ := toFloat(rd[3])
+	return Rectangle{
+		LLX: rect.LLX + left,
+		LLY: rect.LLY + bottom,
+		URX: rect.URX - right,
+		URY: rect.URY - top,
+	}
+}
+
+// SetInnerRect writes /RD computed from the difference between the
+// outer /Rect and the supplied inner rect (page-space). Negative
+// distances are clamped to 0 to keep /RD spec-valid.
+func (a *FreeTextAnnotation) SetInnerRect(inner Rectangle) {
+	rect := a.Rect()
+	left := inner.LLX - rect.LLX
+	top := rect.URY - inner.URY
+	right := rect.URX - inner.URX
+	bottom := inner.LLY - rect.LLY
+	if left < 0 {
+		left = 0
+	}
+	if top < 0 {
+		top = 0
+	}
+	if right < 0 {
+		right = 0
+	}
+	if bottom < 0 {
+		bottom = 0
+	}
+	a.dict["/RD"] = pdfArray{left, top, right, bottom}
+	a.regenerateAP()
+}
+
 // parseFreeTextAnnotation builds a FreeTextAnnotation from a parsed dict.
 func parseFreeTextAnnotation(base annotationBase) *FreeTextAnnotation {
 	a := &FreeTextAnnotation{drawingAnnotationBase: drawingAnnotationBase{annotationBase: base}}

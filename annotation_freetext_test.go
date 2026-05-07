@@ -284,3 +284,99 @@ func TestFreeTextAnnotationSetIntentClearsToDefault(t *testing.T) {
 		t.Errorf("Intent = %v, want FreeTextIntentFreeText after reset", got)
 	}
 }
+
+func TestFreeTextAnnotationCalloutPointsRoundTrip2pt(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	ft := pdf.NewFreeTextAnnotation(page,
+		pdf.Rectangle{LLX: 200, LLY: 600, URX: 400, URY: 700},
+		"callout", pdf.TextStyle{Font: pdf.FontHelvetica, Size: 12})
+	ft.SetCalloutPoints([]pdf.Point{
+		{X: 150, Y: 650}, // knee
+		{X: 100, Y: 550}, // endpoint
+	})
+	ft.SetEndLineEnding(pdf.LineEndingClosedArrow)
+	if err := page.Annotations().Add(ft); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	ft2 := doc2.Pages()[0].Annotations().At(0).(*pdf.FreeTextAnnotation)
+	if ft2.Intent() != pdf.FreeTextIntentCallout {
+		t.Errorf("Intent = %v, want Callout (auto-set by SetCalloutPoints)", ft2.Intent())
+	}
+	pts := ft2.CalloutPoints()
+	if len(pts) != 2 {
+		t.Fatalf("CalloutPoints len = %d, want 2", len(pts))
+	}
+	if pts[0].X != 150 || pts[0].Y != 650 || pts[1].X != 100 || pts[1].Y != 550 {
+		t.Errorf("CalloutPoints = %+v", pts)
+	}
+	if got := ft2.EndLineEnding(); got != pdf.LineEndingClosedArrow {
+		t.Errorf("EndLineEnding = %v, want ClosedArrow", got)
+	}
+}
+
+func TestFreeTextAnnotationCalloutPointsRoundTrip3pt(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	ft := pdf.NewFreeTextAnnotation(page,
+		pdf.Rectangle{LLX: 200, LLY: 600, URX: 400, URY: 700},
+		"callout", pdf.TextStyle{Font: pdf.FontHelvetica, Size: 12})
+	ft.SetCalloutPoints([]pdf.Point{
+		{X: 180, Y: 580},
+		{X: 150, Y: 540},
+		{X: 100, Y: 500},
+	})
+	page.Annotations().Add(ft)
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	ft2 := doc2.Pages()[0].Annotations().At(0).(*pdf.FreeTextAnnotation)
+	pts := ft2.CalloutPoints()
+	if len(pts) != 3 {
+		t.Fatalf("3-point CalloutPoints len = %d, want 3", len(pts))
+	}
+	if pts[2].X != 100 || pts[2].Y != 500 {
+		t.Errorf("CalloutPoints[2] = %+v, want endpoint (100,500)", pts[2])
+	}
+}
+
+func TestFreeTextAnnotationInnerRectRoundTrip(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	rect := pdf.Rectangle{LLX: 100, LLY: 100, URX: 300, URY: 200}
+	ft := pdf.NewFreeTextAnnotation(page, rect, "x", pdf.TextStyle{})
+	inner := pdf.Rectangle{LLX: 120, LLY: 110, URX: 280, URY: 190} // 20pt left/right, 10pt top/bottom inset
+	ft.SetInnerRect(inner)
+	page.Annotations().Add(ft)
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	ft2 := doc2.Pages()[0].Annotations().At(0).(*pdf.FreeTextAnnotation)
+	got := ft2.InnerRect()
+	if got.LLX != 120 || got.LLY != 110 || got.URX != 280 || got.URY != 190 {
+		t.Errorf("InnerRect round-trip = %+v, want %+v", got, inner)
+	}
+}
+
+func TestFreeTextAnnotationInnerRectDefaultEqualsRect(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	rect := pdf.Rectangle{LLX: 100, LLY: 100, URX: 300, URY: 200}
+	ft := pdf.NewFreeTextAnnotation(page, rect, "x", pdf.TextStyle{})
+	got := ft.InnerRect()
+	if got.LLX != rect.LLX || got.URY != rect.URY {
+		t.Errorf("default InnerRect = %+v, want %+v (equal to rect when /RD absent)", got, rect)
+	}
+}
+
+func TestFreeTextAnnotationDefaultEndLineEnding(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	ft := pdf.NewFreeTextAnnotation(page, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 50}, "x", pdf.TextStyle{})
+	if got := ft.EndLineEnding(); got != pdf.LineEndingNone {
+		t.Errorf("default EndLineEnding = %v, want LineEndingNone", got)
+	}
+}
