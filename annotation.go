@@ -379,6 +379,8 @@ func parseAnnotation(base annotationBase) Annotation {
 		ink := &InkAnnotation{drawingAnnotationBase: drawingAnnotationBase{annotationBase: base}}
 		ink.regenerate = ink.regenerateAP
 		return ink
+	case "/Text":
+		return parseTextAnnotation(base)
 	}
 	return &GenericAnnotation{annotationBase: base}
 }
