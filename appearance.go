@@ -561,6 +561,32 @@ func emitInkStroke(b *appearanceBuilder, points []Point) {
 	b.Stroke()
 }
 
+// existingAPNResources returns the /Resources dict from the current /AP/N
+// XObject for an annotation, or nil if no such XObject exists yet.
+// Used by text-bearing annotation appearance generators to reuse already-
+// registered font objects rather than allocating duplicates on each
+// regeneration call.
+func existingAPNResources(base *annotationBase) pdfDict {
+	if base.doc == nil {
+		return nil
+	}
+	apDict, _ := base.dict["/AP"].(pdfDict)
+	ref, ok := apDict["/N"].(pdfRef)
+	if !ok {
+		return nil
+	}
+	obj, exists := base.doc.objects[ref.Num]
+	if !exists {
+		return nil
+	}
+	stream, ok := obj.Value.(*pdfStream)
+	if !ok {
+		return nil
+	}
+	res, _ := stream.Dict["/Resources"].(pdfDict)
+	return res
+}
+
 // setAppearanceN replaces /AP/N on the annotation. If /AP/N already
 // references an XObject in doc.objects, that object is mutated in place
 // (no new objID allocated, no orphans). Otherwise a fresh XObject is
