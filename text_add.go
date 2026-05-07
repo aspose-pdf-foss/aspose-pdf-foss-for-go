@@ -13,6 +13,205 @@ type widthFn func(r rune) float64
 // encoding, "<...>" for hex glyph IDs.
 type encodeFn func(s string) string
 
+// fontResolver registers a font into the caller's /Resources dict (when
+// resources is non-nil) and returns the local resource name (e.g. "/F1")
+// plus per-font callbacks. Page.AddText supplies a page-level resolver
+// that delegates to p.ensureStandardFontResource /
+// p.ensureEmbeddedFontResource; FreeText/Stamp /AP rendering will supply
+// an XObject-level resolver in later tasks.
+type fontResolver func(font Font, resources pdfDict) (resName string, width widthFn, encode encodeFn, ascent, descent float64, err error)
+
+// renderTextInBuilder draws wrapped/aligned text into b. Font references
+// are accumulated into resources["/Font"] via the resolver. The caller is
+// responsible for rotation wrapping (style.Rotation) and the
+// behind-content flag (style.Behind); this helper emits only the
+// clipping / background / text / underline / strikethrough operators,
+// wrapped in one q … Q block.
+//
+// textGSName and bgGSName are optional ExtGState resource names for
+// fill-opacity transparency (empty string = opaque). Page-level callers
+// set these up via ensureExtGState before calling; XObject callers pass
+// empty strings.
+func renderTextInBuilder(
+	b *appearanceBuilder,
+	resources pdfDict,
+	text string,
+	style TextStyle,
+	rect Rectangle,
+	resolve fontResolver,
+	textGSName, bgGSName string,
+) error {
+	if text == "" {
+		return nil
+	}
+	if err := rect.validate(); err != nil {
+		return fmt.Errorf("render text: %w", err)
+	}
+	if style.Size < 0 {
+		return fmt.Errorf("render text: font size must be non-negative, got %g", style.Size)
+	}
+
+	font := style.Font
+	if font == nil {
+		font = FontHelvetica
+	}
+	fontSize := style.Size
+	if fontSize == 0 {
+		fontSize = 12
+	}
+	lineSpacing := style.LineSpacing
+	if lineSpacing == 0 {
+		lineSpacing = 1.2
+	}
+	textColor := Color{R: 0, G: 0, B: 0, A: 1}
+	if style.Color != nil {
+		textColor = *style.Color
+	}
+
+	rectWidth := rect.URX - rect.LLX
+	rectHeight := rect.URY - rect.LLY
+
+	resName, width, encode, ascentFactor, _, err := resolve(font, resources)
+	if err != nil {
+		return err
+	}
+
+	lines := wrapText(text, width, rectWidth)
+	if len(lines) == 0 {
+		return nil
+	}
+
+	// Line height and total text height.
+	lineHeight := fontSize * lineSpacing
+	totalTextHeight := float64(len(lines)) * lineHeight
+
+	// Vertical start position (top of first line, in PDF coordinates).
+	var startY float64
+	switch style.VAlign {
+	case VAlignMiddle:
+		startY = rect.URY - (rectHeight-totalTextHeight)/2
+	case VAlignBottom:
+		startY = rect.LLY + totalTextHeight
+	default: // VAlignTop
+		startY = rect.URY
+	}
+
+	// Coordinate offsets: when rotation is handled by the caller via cm,
+	// positions inside this block are still absolute. We do not apply any
+	// offset here; the caller's cm already re-maps the coordinate space.
+	// (Kept as zero to match the original behaviour.)
+	ox := 0.0
+	oy := 0.0
+
+	// Save state.
+	b.PushState()
+
+	// Clipping path.
+	b.buf.WriteString(fmt.Sprintf("%s %s %s %s re W n\n",
+		formatFloat(rect.LLX-ox), formatFloat(rect.LLY-oy),
+		formatFloat(rectWidth), formatFloat(rectHeight)))
+
+	// Background fill.
+	if style.Background != nil && style.Background.A > 0 {
+		if bgGSName != "" {
+			b.buf.WriteString(fmt.Sprintf("%s gs\n", bgGSName))
+		}
+		b.buf.WriteString(fmt.Sprintf("%s %s %s rg\n",
+			formatFloat(style.Background.R), formatFloat(style.Background.G), formatFloat(style.Background.B)))
+		b.buf.WriteString(fmt.Sprintf("%s %s %s %s re f\n",
+			formatFloat(rect.LLX-ox), formatFloat(rect.LLY-oy),
+			formatFloat(rectWidth), formatFloat(rectHeight)))
+	}
+
+	// Text opacity.
+	if textGSName != "" {
+		b.buf.WriteString(fmt.Sprintf("%s gs\n", textGSName))
+	}
+
+	// Text block.
+	b.buf.WriteString("BT\n")
+	b.buf.WriteString(fmt.Sprintf("%s %s Tf\n", resName, formatFloat(fontSize)))
+	b.buf.WriteString(fmt.Sprintf("%s %s %s rg\n",
+		formatFloat(textColor.R), formatFloat(textColor.G), formatFloat(textColor.B)))
+
+	// Track positions for underline/strikethrough.
+	type linePos struct {
+		x, y, width float64
+	}
+	var linePositions []linePos
+
+	for i, line := range lines {
+		if line == "" {
+			continue
+		}
+		lineWidth := measureString(line, width)
+
+		// Horizontal alignment.
+		var x float64
+		switch style.HAlign {
+		case HAlignCenter:
+			x = rect.LLX + (rectWidth-lineWidth)/2
+		case HAlignRight:
+			x = rect.LLX + (rectWidth - lineWidth)
+		default: // HAlignLeft
+			x = rect.LLX
+		}
+
+		// Baseline Y: top of line area minus ascent.
+		ascent := ascentFactor * fontSize
+		y := startY - float64(i)*lineHeight - ascent
+
+		// Apply coordinate offset for rotation (always zero here; preserved
+		// for symmetry with the original monolithic code).
+		adjX := x - ox
+		adjY := y - oy
+
+		if len(linePositions) == 0 {
+			b.buf.WriteString(fmt.Sprintf("%s %s Td\n", formatFloat(adjX), formatFloat(adjY)))
+		} else {
+			prevX := linePositions[len(linePositions)-1].x
+			prevY := linePositions[len(linePositions)-1].y
+			b.buf.WriteString(fmt.Sprintf("%s %s Td\n", formatFloat(adjX-prevX), formatFloat(adjY-prevY)))
+		}
+
+		b.buf.WriteString(fmt.Sprintf("%s Tj\n", encode(line)))
+		linePositions = append(linePositions, linePos{x: adjX, y: adjY, width: lineWidth})
+	}
+
+	b.buf.WriteString("ET\n")
+
+	// Underline.
+	if style.Underline && len(linePositions) > 0 {
+		b.buf.WriteString(fmt.Sprintf("%s %s %s rg\n",
+			formatFloat(textColor.R), formatFloat(textColor.G), formatFloat(textColor.B)))
+		thickness := fontSize * 0.05
+		for _, lp := range linePositions {
+			ulY := lp.y - fontSize*0.1
+			b.buf.WriteString(fmt.Sprintf("%s %s %s %s re f\n",
+				formatFloat(lp.x), formatFloat(ulY),
+				formatFloat(lp.width), formatFloat(thickness)))
+		}
+	}
+
+	// Strikethrough.
+	if style.Strikethrough && len(linePositions) > 0 {
+		b.buf.WriteString(fmt.Sprintf("%s %s %s rg\n",
+			formatFloat(textColor.R), formatFloat(textColor.G), formatFloat(textColor.B)))
+		thickness := fontSize * 0.05
+		for _, lp := range linePositions {
+			stY := lp.y + fontSize*0.3
+			b.buf.WriteString(fmt.Sprintf("%s %s %s %s re f\n",
+				formatFloat(lp.x), formatFloat(stY),
+				formatFloat(lp.width), formatFloat(thickness)))
+		}
+	}
+
+	// Restore state.
+	b.PopState()
+
+	return nil
+}
+
 // wrapText splits text into lines that fit within maxWidth points.
 // It breaks at spaces; words longer than maxWidth are broken on rune boundaries.
 // Explicit newlines in the input force a line break.
@@ -137,49 +336,10 @@ func escapeStringPDF(s string) string {
 	return b.String()
 }
 
-// AddText draws text inside the rectangle using the given style.
-// Text is wrapped at word boundaries to fit the rectangle width.
-// Content exceeding the rectangle height is clipped.
-func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
-	if text == "" {
-		return nil
-	}
-	if err := rect.validate(); err != nil {
-		return fmt.Errorf("add text: %w", err)
-	}
-	if style.Size < 0 {
-		return fmt.Errorf("add text: font size must be non-negative, got %g", style.Size)
-	}
-	// Default Font if unset.
-	font := style.Font
-	if font == nil {
-		font = FontHelvetica
-	}
-
-	// Apply defaults.
-	fontSize := style.Size
-	if fontSize == 0 {
-		fontSize = 12
-	}
-	lineSpacing := style.LineSpacing
-	if lineSpacing == 0 {
-		lineSpacing = 1.2
-	}
-	textColor := Color{R: 0, G: 0, B: 0, A: 1}
-	if style.Color != nil {
-		textColor = *style.Color
-	}
-
-	rectWidth := rect.URX - rect.LLX
-	rectHeight := rect.URY - rect.LLY
-
-	// Resolve font-specific callbacks.
-	var (
-		width        widthFn
-		encode       encodeFn
-		fontResName  string
-		ascentFactor float64
-	)
+// resolveFontForPage handles page-level font registration and returns the
+// callbacks needed by renderTextInBuilder. It is extracted from the
+// original AddText monolith so that AddText becomes a thin wrapper.
+func (p *Page) resolveFontForPage(font Font, size float64) (resName string, width widthFn, encode encodeFn, ascent, descent float64, err error) {
 	switch f := font.(type) {
 	case standardFont:
 		pdfFontName := "/" + f.name
@@ -195,7 +355,7 @@ func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
 			if !ok {
 				code = byte('?')
 			}
-			return widths[code] / 1000.0 * fontSize
+			return widths[code] / 1000.0 * size
 		}
 		encode = func(s string) string {
 			var b strings.Builder
@@ -214,19 +374,19 @@ func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
 			b.WriteByte(')')
 			return b.String()
 		}
-		name, err := p.ensureStandardFontResource(pdfFontName)
-		if err != nil {
-			return err
+		name, e := p.ensureStandardFontResource(pdfFontName)
+		if e != nil {
+			return "", nil, nil, 0, 0, e
 		}
-		fontResName = name
-		ascentFactor = 0.8
+		return name, width, encode, 0.8, 0, nil
+
 	case *embeddedFont:
 		width = func(r rune) float64 {
 			gid := f.ttf.glyphID(r)
 			if int(gid) >= len(f.ttf.glyphWidths) {
 				return 0
 			}
-			return float64(f.ttf.glyphWidths[gid]) / float64(f.ttf.unitsPerEm) * fontSize
+			return float64(f.ttf.glyphWidths[gid]) / float64(f.ttf.unitsPerEm) * size
 		}
 		encode = func(s string) string {
 			var b strings.Builder
@@ -237,37 +397,53 @@ func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
 			b.WriteByte('>')
 			return b.String()
 		}
-		name, err := p.ensureEmbeddedFontResource(f)
-		if err != nil {
-			return err
+		name, e := p.ensureEmbeddedFontResource(f)
+		if e != nil {
+			return "", nil, nil, 0, 0, e
 		}
-		fontResName = name
-		ascentFactor = float64(f.ttf.ascent) / float64(f.ttf.unitsPerEm)
-	default:
-		return fmt.Errorf("add text: unsupported font type %T", font)
-	}
+		ascentVal := float64(f.ttf.ascent) / float64(f.ttf.unitsPerEm)
+		return name, width, encode, ascentVal, 0, nil
 
-	lines := wrapText(text, width, rectWidth)
-	if len(lines) == 0 {
+	default:
+		return "", nil, nil, 0, 0, fmt.Errorf("add text: unsupported font type %T", font)
+	}
+}
+
+// AddText draws text inside the rectangle using the given style.
+// Text is wrapped at word boundaries to fit the rectangle width.
+// Content exceeding the rectangle height is clipped.
+func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
+	if text == "" {
 		return nil
 	}
-
-	// Line height and total text height.
-	lineHeight := fontSize * lineSpacing
-	totalTextHeight := float64(len(lines)) * lineHeight
-
-	// Vertical start position (top of first line, in PDF coordinates).
-	var startY float64
-	switch style.VAlign {
-	case VAlignMiddle:
-		startY = rect.URY - (rectHeight-totalTextHeight)/2
-	case VAlignBottom:
-		startY = rect.LLY + totalTextHeight
-	default: // VAlignTop
-		startY = rect.URY
+	if err := rect.validate(); err != nil {
+		return fmt.Errorf("add text: %w", err)
+	}
+	if style.Size < 0 {
+		return fmt.Errorf("add text: font size must be non-negative, got %g", style.Size)
 	}
 
-	// Register ExtGState resources if needed.
+	// Default Font if unset.
+	font := style.Font
+	if font == nil {
+		font = FontHelvetica
+	}
+
+	fontSize := style.Size
+	if fontSize == 0 {
+		fontSize = 12
+	}
+
+	// Build the page-level font resolver closure.
+	resolve := func(f Font, _ pdfDict) (string, widthFn, encodeFn, float64, float64, error) {
+		return p.resolveFontForPage(f, fontSize)
+	}
+
+	// Set up ExtGState resources for transparency (page-level concern).
+	textColor := Color{R: 0, G: 0, B: 0, A: 1}
+	if style.Color != nil {
+		textColor = *style.Color
+	}
 	var textGSName, bgGSName string
 	if textColor.A < 1 {
 		name, err := p.ensureExtGState(textColor.A)
@@ -287,11 +463,6 @@ func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
 	// Build content stream operators.
 	var buf strings.Builder
 
-	// Coordinate offsets: when rotated, all positions are relative to pivot (0,0).
-	// When not rotated, positions are absolute.
-	ox := 0.0 // offset X to subtract from all coordinates
-	oy := 0.0 // offset Y to subtract from all coordinates
-
 	// Save state + optional rotation transform.
 	buf.WriteString("\nq\n")
 
@@ -304,111 +475,16 @@ func (p *Page) AddText(text string, style TextStyle, rect Rectangle) error {
 		sin := math.Sin(rad)
 		buf.WriteString(fmt.Sprintf("%s %s %s %s 0 0 cm\n",
 			formatFloat(cos), formatFloat(sin), formatFloat(-sin), formatFloat(cos)))
-		// All subsequent coordinates are relative to pivot.
-		ox = rect.LLX
-		oy = rect.LLY
 	}
 
-	// Clipping path.
-	buf.WriteString(fmt.Sprintf("%s %s %s %s re W n\n",
-		formatFloat(rect.LLX-ox), formatFloat(rect.LLY-oy),
-		formatFloat(rectWidth), formatFloat(rectHeight)))
-
-	// Background fill.
-	if style.Background != nil && style.Background.A > 0 {
-		if bgGSName != "" {
-			buf.WriteString(fmt.Sprintf("%s gs\n", bgGSName))
-		}
-		buf.WriteString(fmt.Sprintf("%s %s %s rg\n",
-			formatFloat(style.Background.R), formatFloat(style.Background.G), formatFloat(style.Background.B)))
-		buf.WriteString(fmt.Sprintf("%s %s %s %s re f\n",
-			formatFloat(rect.LLX-ox), formatFloat(rect.LLY-oy),
-			formatFloat(rectWidth), formatFloat(rectHeight)))
+	// Render the text body into a sub-builder, then embed it.
+	b := newAppearanceBuilder()
+	if err := renderTextInBuilder(b, pdfDict{}, text, style, rect, resolve, textGSName, bgGSName); err != nil {
+		return err
 	}
+	buf.Write(b.Bytes())
 
-	// Text opacity.
-	if textGSName != "" {
-		buf.WriteString(fmt.Sprintf("%s gs\n", textGSName))
-	}
-
-	// Text block.
-	buf.WriteString("BT\n")
-	buf.WriteString(fmt.Sprintf("%s %s Tf\n", fontResName, formatFloat(fontSize)))
-	buf.WriteString(fmt.Sprintf("%s %s %s rg\n",
-		formatFloat(textColor.R), formatFloat(textColor.G), formatFloat(textColor.B)))
-
-	// Track positions for underline/strikethrough.
-	type linePos struct {
-		x, y, width float64
-	}
-	var linePositions []linePos
-
-	for i, line := range lines {
-		if line == "" {
-			continue
-		}
-		lineWidth := measureString(line, width)
-
-		// Horizontal alignment.
-		var x float64
-		switch style.HAlign {
-		case HAlignCenter:
-			x = rect.LLX + (rectWidth-lineWidth)/2
-		case HAlignRight:
-			x = rect.LLX + (rectWidth - lineWidth)
-		default: // HAlignLeft
-			x = rect.LLX
-		}
-
-		// Baseline Y: top of line area minus ascent.
-		ascent := ascentFactor * fontSize
-		y := startY - float64(i)*lineHeight - ascent
-
-		// Apply coordinate offset for rotation.
-		adjX := x - ox
-		adjY := y - oy
-
-		if len(linePositions) == 0 {
-			buf.WriteString(fmt.Sprintf("%s %s Td\n", formatFloat(adjX), formatFloat(adjY)))
-		} else {
-			prevX := linePositions[len(linePositions)-1].x
-			prevY := linePositions[len(linePositions)-1].y
-			buf.WriteString(fmt.Sprintf("%s %s Td\n", formatFloat(adjX-prevX), formatFloat(adjY-prevY)))
-		}
-
-		buf.WriteString(fmt.Sprintf("%s Tj\n", encode(line)))
-		linePositions = append(linePositions, linePos{x: adjX, y: adjY, width: lineWidth})
-	}
-
-	buf.WriteString("ET\n")
-
-	// Underline.
-	if style.Underline && len(linePositions) > 0 {
-		buf.WriteString(fmt.Sprintf("%s %s %s rg\n",
-			formatFloat(textColor.R), formatFloat(textColor.G), formatFloat(textColor.B)))
-		thickness := fontSize * 0.05
-		for _, lp := range linePositions {
-			ulY := lp.y - fontSize*0.1
-			buf.WriteString(fmt.Sprintf("%s %s %s %s re f\n",
-				formatFloat(lp.x), formatFloat(ulY),
-				formatFloat(lp.width), formatFloat(thickness)))
-		}
-	}
-
-	// Strikethrough.
-	if style.Strikethrough && len(linePositions) > 0 {
-		buf.WriteString(fmt.Sprintf("%s %s %s rg\n",
-			formatFloat(textColor.R), formatFloat(textColor.G), formatFloat(textColor.B)))
-		thickness := fontSize * 0.05
-		for _, lp := range linePositions {
-			stY := lp.y + fontSize*0.3
-			buf.WriteString(fmt.Sprintf("%s %s %s %s re f\n",
-				formatFloat(lp.x), formatFloat(stY),
-				formatFloat(lp.width), formatFloat(thickness)))
-		}
-	}
-
-	// Restore state.
+	// Close outer state.
 	buf.WriteString("Q\n")
 
 	if style.Behind {
