@@ -69,3 +69,31 @@ func TestStampAnnotationConstructorPanicOnNilPage(t *testing.T) {
 	}()
 	pdf.NewStampAnnotation(nil, pdf.Rectangle{}, pdf.StampNameDraft)
 }
+
+func TestStampAnnotationAllPredefinedNamesRoundTrip(t *testing.T) {
+	names := []pdf.StampName{
+		pdf.StampNameApproved, pdf.StampNameAsIs, pdf.StampNameConfidential,
+		pdf.StampNameDepartmental, pdf.StampNameDraft, pdf.StampNameExperimental,
+		pdf.StampNameExpired, pdf.StampNameFinal, pdf.StampNameForComment,
+		pdf.StampNameForPublicRelease, pdf.StampNameNotApproved,
+		pdf.StampNameNotForPublicRelease, pdf.StampNameSold, pdf.StampNameTopSecret,
+	}
+	for _, name := range names {
+		t.Run(name.String(), func(t *testing.T) {
+			doc := pdf.NewDocument(595, 842)
+			page, _ := doc.Page(1)
+			sa := pdf.NewStampAnnotation(page,
+				pdf.Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 750}, name)
+			if err := page.Annotations().Add(sa); err != nil {
+				t.Fatalf("Add: %v", err)
+			}
+			var buf bytes.Buffer
+			doc.WriteTo(&buf)
+			doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+			sa2 := doc2.Pages()[0].Annotations().At(0).(*pdf.StampAnnotation)
+			if got := sa2.Name(); got != name {
+				t.Errorf("Name round-trip = %v, want %v", got, name)
+			}
+		})
+	}
+}

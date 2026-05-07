@@ -709,3 +709,122 @@ func nextGSName(gsDict pdfDict) string {
 		}
 	}
 }
+
+// resolveFontForXObject is the fontResolver variant for XObject /AP
+// contexts. Registers the font in the supplied resources dict
+// (resources["/Font"][resName] = pdfRef{...}) instead of the page's
+// /Resources. Returns the local resource name, width/encode callbacks,
+// and ascent/descent metrics — same shape as resolveFontForPage.
+func resolveFontForXObject(font Font, size float64, doc *Document, resources pdfDict) (resName string, width widthFn, encode encodeFn, ascent, descent float64, err error) {
+	// Ensure /Font subdict exists in the supplied resources.
+	fontDict, _ := resources["/Font"].(pdfDict)
+	if fontDict == nil {
+		fontDict = pdfDict{}
+		resources["/Font"] = fontDict
+	}
+
+	switch f := font.(type) {
+	case standardFont:
+		pdfFontName := "/" + f.name
+		widths, _ := standard14Widths(pdfFontName)
+		encodeRune := func(r rune) (byte, bool) {
+			return encodeRuneForStandardFont(pdfFontName, r)
+		}
+		width = func(r rune) float64 {
+			code, ok := encodeRune(r)
+			if !ok {
+				code = byte('?')
+			}
+			return widths[code] / 1000.0 * size
+		}
+		encode = func(s string) string {
+			var b strings.Builder
+			b.WriteByte('(')
+			for _, r := range s {
+				code, ok := encodeRune(r)
+				if !ok {
+					code = byte('?')
+				}
+				switch code {
+				case '(', ')', '\\':
+					b.WriteByte('\\')
+				}
+				b.WriteByte(code)
+			}
+			b.WriteByte(')')
+			return b.String()
+		}
+
+		// Check if this BaseFont is already registered in the XObject resources.
+		for name, val := range fontDict {
+			ref, ok := val.(pdfRef)
+			if !ok {
+				continue
+			}
+			obj := doc.objects[ref.Num]
+			if obj == nil {
+				continue
+			}
+			dict, ok := obj.Value.(pdfDict)
+			if !ok {
+				continue
+			}
+			if bf, ok := dict["/BaseFont"].(pdfName); ok && string(bf) == pdfFontName {
+				return name, width, encode, 0.8, 0, nil
+			}
+		}
+
+		// Create new font object in doc.objects.
+		fontObjDict := pdfDict{
+			"/Type":     pdfName("/Font"),
+			"/Subtype":  pdfName("/Type1"),
+			"/BaseFont": pdfName(pdfFontName),
+		}
+		if pdfFontName != "/Symbol" && pdfFontName != "/ZapfDingbats" {
+			fontObjDict["/Encoding"] = pdfName("/WinAnsiEncoding")
+		}
+		fontID := doc.nextID
+		doc.nextID++
+		doc.objects[fontID] = &pdfObject{Num: fontID, Value: fontObjDict}
+
+		name := nextFontName(fontDict)
+		fontDict[name] = pdfRef{Num: fontID}
+		return name, width, encode, 0.8, 0, nil
+
+	case *embeddedFont:
+		if f.doc != doc {
+			return "", nil, nil, 0, 0, fmt.Errorf("resolve font: font was loaded into a different document")
+		}
+		width = func(r rune) float64 {
+			gid := f.ttf.glyphID(r)
+			if int(gid) >= len(f.ttf.glyphWidths) {
+				return 0
+			}
+			return float64(f.ttf.glyphWidths[gid]) / float64(f.ttf.unitsPerEm) * size
+		}
+		encode = func(s string) string {
+			var b strings.Builder
+			b.WriteByte('<')
+			for _, r := range s {
+				fmt.Fprintf(&b, "%04X", f.ttf.glyphID(r))
+			}
+			b.WriteByte('>')
+			return b.String()
+		}
+
+		// Check if already registered in XObject resources.
+		for name, val := range fontDict {
+			if ref, ok := val.(pdfRef); ok && ref.Num == f.fontObjectID {
+				ascentVal := float64(f.ttf.ascent) / float64(f.ttf.unitsPerEm)
+				return name, width, encode, ascentVal, 0, nil
+			}
+		}
+		name := nextFontName(fontDict)
+		fontDict[name] = pdfRef{Num: f.fontObjectID}
+		ascentVal := float64(f.ttf.ascent) / float64(f.ttf.unitsPerEm)
+		return name, width, encode, ascentVal, 0, nil
+
+	default:
+		return "", nil, nil, 0, 0, fmt.Errorf("resolve font: unsupported font type %T", font)
+	}
+}

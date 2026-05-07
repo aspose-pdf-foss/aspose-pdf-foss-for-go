@@ -23,6 +23,15 @@ const (
 	StampNameTopSecret
 )
 
+// String returns the spec name (e.g. "Approved") for diagnostics.
+func (n StampName) String() string {
+	s := string(stampNameToPDF(n))
+	if len(s) > 0 && s[0] == '/' {
+		return s[1:]
+	}
+	return s
+}
+
 // StampAnnotation is a rubber-stamp annotation. Renders one of 14
 // predefined visuals (Approved, Confidential, Draft, etc.) or a custom
 // image. Per ISO 32000-1 §12.5.6.13.

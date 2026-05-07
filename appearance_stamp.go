@@ -154,24 +154,92 @@ func pdfNameToStampName(n pdfName) StampName {
 	return StampNameUnknown
 }
 
-// generateStampAppearance produces /AP/N for a Stamp annotation. This
-// task is the skeleton — predefined visuals are rendered fully in
-// Task 7, custom-image support in Task 8.
+// generateStampAppearance produces /AP/N for a Stamp annotation.
+// Dispatches to predefined visual rendering or custom-image stub.
 func generateStampAppearance(a *StampAnnotation) *pdfStream {
+	if a.HasCustomImage() {
+		return generateCustomImageStamp(a)
+	}
+	return generatePredefinedStamp(a)
+}
+
+// generatePredefinedStamp renders a default visual based on /Name:
+// filled rounded rect + inner decorative border + uppercase italic
+// label centered inside.
+func generatePredefinedStamp(a *StampAnnotation) *pdfStream {
 	rect := a.Rect()
 	width := rect.URX - rect.LLX
 	height := rect.URY - rect.LLY
 
-	b := newAppearanceBuilder()
-	primary, _, _ := stampVisualParams(a.Name())
+	primary, fill, label := stampVisualParams(a.Name())
 
-	// Skeleton: just a colored border rect, no fill, no label.
+	b := newAppearanceBuilder()
+	resources := pdfDict{}
+
+	// 1. Filled rounded rect (background + outer border).
 	b.PushState()
-	b.SetLineWidth(2)
+	b.SetFillColorRGB(fill)
 	b.SetStrokeColorRGB(primary)
-	drawRoundedRect(b, 2, 2, width-4, height-4, 5)
+	b.SetLineWidth(2)
+	drawRoundedRect(b, 1, 1, width-2, height-2, 5)
+	b.FillStroke()
+	b.PopState()
+
+	// 2. Inner border (decorative double-line look).
+	b.PushState()
+	b.SetStrokeColorRGB(primary)
+	b.SetLineWidth(1)
+	drawRoundedRect(b, 4, 4, width-8, height-8, 3)
 	b.Stroke()
 	b.PopState()
 
-	return makeFormXObjectWithResources(b.Bytes(), Rectangle{URX: width, URY: height}, pdfDict{})
+	// 3. Centered label (using renderTextInBuilder).
+	if label != "" {
+		fontSize := fitStampFontSize(label, width-12, height-12)
+		primaryCopy := primary
+		style := TextStyle{
+			Font:   FontHelveticaBoldOblique,
+			Size:   fontSize,
+			Color:  &primaryCopy,
+			HAlign: HAlignCenter,
+			VAlign: VAlignMiddle,
+		}
+		textRect := Rectangle{LLX: 6, LLY: 6, URX: width - 6, URY: height - 6}
+		// XObject-context resolver: register font in resources, not page.
+		resolve := func(font Font, _ pdfDict) (resName string, w widthFn, e encodeFn, asc, desc float64, err error) {
+			return resolveFontForXObject(font, fontSize, a.doc, resources)
+		}
+		// Empty ExtGState names — opaque text, no transparency.
+		_ = renderTextInBuilder(b, resources, label, style, textRect, resolve, "", "")
+	}
+
+	return makeFormXObjectWithResources(b.Bytes(), Rectangle{URX: width, URY: height}, resources)
+}
+
+// fitStampFontSize chooses a font size that fits label within the
+// available rect dimensions. Heuristic: start at height/2, reduce until
+// the label width fits maxWidth (rough estimate).
+func fitStampFontSize(label string, maxWidth, maxHeight float64) float64 {
+	size := maxHeight * 0.6
+	if size > 24 {
+		size = 24
+	}
+	// Estimate label width at this font size. Helvetica-Bold-Oblique
+	// average char width is roughly 0.55 × fontSize.
+	estWidth := float64(len(label)) * 0.55 * size
+	if estWidth > maxWidth {
+		size = maxWidth / (float64(len(label)) * 0.55)
+	}
+	if size < 6 {
+		size = 6
+	}
+	return size
+}
+
+// generateCustomImageStamp wraps the custom Image XObject (allocated
+// during SetCustomImage) into the /AP/N Form XObject. Stub for now —
+// full impl in Task 8.
+func generateCustomImageStamp(a *StampAnnotation) *pdfStream {
+	rect := a.Rect()
+	return makeFormXObjectWithResources([]byte{}, Rectangle{URX: rect.URX - rect.LLX, URY: rect.URY - rect.LLY}, pdfDict{})
 }
