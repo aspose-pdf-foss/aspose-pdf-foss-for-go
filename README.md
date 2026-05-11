@@ -46,7 +46,7 @@ doc.Save("merged.pdf")
 - **Text watermarks** — apply text watermarks to all or selected pages with full styling control
 - **Stream input** — open PDFs from any `io.Reader`, not just file paths
 - **Forms (AcroForm)** — read, fill, and build from scratch all standard field types (text, checkbox, radio, combo box, list box, push button); programmatic field creation with `AddTextField`/`AddCheckbox`/`AddRadioGroup`/`AddComboBox`/`AddListBox`/`AddPushButton`; `RemoveField`; non-ASCII values encoded as UTF-16BE; viewers regenerate appearances via auto `/NeedAppearances=true`
-- **Annotations** — Link (with /A actions: GoToURI, GoTo, Named, SubmitForm, ResetForm, JavaScript-read-only), Highlight, Underline, StrikeOut, Squiggly. Page-scoped collection API (`Page.Annotations()` with `Add`/`At`/`Delete`/`DeleteAt`); existing form widgets surface as read-only `WidgetAnnotation`. Drawing primitives (Square/Circle/Line/Ink) with full ISO 32000-1 border styles (Solid/Dashed/Beveled/Inset/Underline) and 10 line-ending styles. Text-bearing types (Text sticky note, FreeText with callout/typewriter/cloudy-border modes, Stamp with 14 predefined visuals + custom image override). `/AP` appearance streams generated automatically — annotations render natively in any spec-conforming viewer
+- **Annotations** — Link (with /A actions: GoToURI, GoTo, Named, SubmitForm, ResetForm, JavaScript), Highlight, Underline, StrikeOut, Squiggly. Page-scoped collection API (`Page.Annotations()` with `Add`/`At`/`Delete`/`DeleteAt`); existing form widgets surface as read-only `WidgetAnnotation`. Drawing primitives (Square/Circle/Line/Ink) with full ISO 32000-1 border styles (Solid/Dashed/Beveled/Inset/Underline) and 10 line-ending styles. Text-bearing types (Text sticky note, FreeText with callout/typewriter/cloudy-border modes, Stamp with 14 predefined visuals + custom image override). FileAttachment with file embedding (path/stream + MIME detection); Redact with mark/apply modes (irreversible content removal of text glyphs, images, and paths via `Document.ApplyRedactions()`); `NewJavaScriptAction` public constructor with security warning. `/AP` appearance streams generated automatically — annotations render natively in any spec-conforming viewer
 
 ## API Reference
 
@@ -308,7 +308,7 @@ page.Annotations().Add(submit)
 doc.Save("with_annotations.pdf")
 ```
 
-Supported subtypes: `Link`, `Highlight`, `Underline`, `StrikeOut`, `Squiggly`, `Square`, `Circle`, `Line`, `Ink`, `Text`, `FreeText`, `Stamp`. Existing form widgets surface as `WidgetAnnotation` for read-only inspection — to mutate form fields use the `Form` API. JavaScript actions are read-only (parsed but not constructible). Out of scope for this release: FileAttachment, Redact.
+Supported subtypes: `Link`, `Highlight`, `Underline`, `StrikeOut`, `Squiggly`, `Square`, `Circle`, `Line`, `Ink`, `Text`, `FreeText`, `Stamp`, `FileAttachment`, `Redact`. Existing form widgets surface as `WidgetAnnotation` for read-only inspection — to mutate form fields use the `Form` API.
 
 ### Drawing annotations (Square / Circle / Line / Ink)
 
@@ -424,6 +424,55 @@ from ISO 32000-1 Table 184 (`StampNameApproved` through `StampNameTopSecret`) sh
 library-default colored visuals — green for positive (Approved/Final/ForPublicRelease), red for
 warning (Confidential/Expired/etc.), orange for informational (Draft/AsIs/etc.), gray for neutral
 (Departmental). Custom images (JPEG / PNG) override the default visual.
+
+### Specialised annotations (FileAttachment / Redact / JavaScript actions)
+
+```go
+doc := pdf.NewDocument(595, 842)
+page, _ := doc.Page(1)
+
+// FileAttachment — embed a file with an icon
+fa := pdf.NewFileAttachmentAnnotation(page, pdf.Point{X: 50, Y: 700})
+fa.SetIcon(pdf.FileAttachmentIconPushPin)
+fa.SetFile("report.pdf")
+fa.SetFileDescription("Q3 financial report")
+fa.SetTitle("Reviewer")
+fa.SetContents("Attached: Q3 report")
+page.Annotations().Add(fa)
+
+// Redact — mark for redaction (apply destructively below)
+page.AddText("Confidential data here",
+    pdf.TextStyle{Font: pdf.FontHelvetica, Size: 14},
+    pdf.Rectangle{LLX: 50, LLY: 600, URX: 545, URY: 630})
+ra := pdf.NewRedactAnnotation(page,
+    pdf.Rectangle{LLX: 50, LLY: 600, URX: 545, URY: 630})
+ra.SetInteriorColor(&pdf.Color{R: 0, G: 0, B: 0, A: 1})
+ra.SetOverlayText("REDACTED")
+page.Annotations().Add(ra)
+
+// Apply destructively — text under /QuadPoints is irreversibly removed
+if err := doc.ApplyRedactions(); err != nil {
+    log.Fatal(err)
+}
+
+// JavaScript action on a Link
+link := pdf.NewLinkAnnotation(page,
+    pdf.Rectangle{LLX: 50, LLY: 500, URX: 200, URY: 520})
+link.SetAction(pdf.NewJavaScriptAction("app.alert('Hello from PDF');"))
+page.Annotations().Add(link)
+
+doc.Save("specialised.pdf")
+```
+
+`FileAttachmentAnnotation` icons: `Paperclip` (default), `Graph`, `PushPin`, `Tag`.
+MIME type auto-detected from file extension. After save, viewers display the icon
+and let users save/open the embedded file. `RedactAnnotation` operates in two modes:
+mark mode (annotation alone, decorative — content still extractable) and apply mode
+(after `Document.ApplyRedactions()`, page content is rewritten to remove text glyphs,
+image XObjects, and paths inside `/QuadPoints` regions; the redact annotation is then
+deleted). Use `ValidateRedactions()` first as a pre-flight parseability check.
+**`NewJavaScriptAction`** carries a documented security warning — embedded JavaScript
+executes in the recipient's viewer.
 
 ### Validation
 

@@ -112,6 +112,8 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `(*Document).AddTextWatermark(text, style, pageNums...) error` — applies a text watermark to all or selected pages using full-page rectangle from MediaBox
 - `(*Document).Form() *Form` — returns the document's AcroForm (always non-nil; empty form for documents without /AcroForm)
 - `(*Page).Annotations() *AnnotationCollection` — returns the page's annotation collection (always non-nil; empty for pages with no /Annots)
+- `(*Document).ApplyRedactions() error` — destructively removes content (text glyphs, image XObjects, paths) inside every `/Redact` annotation's regions, draws overlay text/fill, then deletes the redact annotations
+- `(*Document).ValidateRedactions() error` — pre-flight parseability check on redact-bearing pages; recommended before `ApplyRedactions`
 
 **`page_labels.go`** — page label support
 - `(*Page).Label()` — formatted page label from the document's `/PageLabels` number tree; falls back to decimal page number if absent
@@ -147,7 +149,7 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 
 **`annotation.go` / `annotation_action.go` / `annotation_link.go` / `annotation_markup.go`**
 - `Annotation` interface — `AnnotationType()`, `Rect()/SetRect()`, `Color()/SetColor()`, `Title()/SetTitle()`, `Contents()/SetContents()`, `PageIndex()`
-- `AnnotationType` enum — `AnnotationTypeUnknown`, `AnnotationTypeLink`, `AnnotationTypeHighlight`, `AnnotationTypeUnderline`, `AnnotationTypeStrikeOut`, `AnnotationTypeSquiggly`, `AnnotationTypeWidget`, `AnnotationTypeSquare`, `AnnotationTypeCircle`, `AnnotationTypeLine`, `AnnotationTypeInk`, `AnnotationTypeText`, `AnnotationTypeFreeText`, `AnnotationTypeStamp`
+- `AnnotationType` enum — `AnnotationTypeUnknown`, `AnnotationTypeLink`, `AnnotationTypeHighlight`, `AnnotationTypeUnderline`, `AnnotationTypeStrikeOut`, `AnnotationTypeSquiggly`, `AnnotationTypeWidget`, `AnnotationTypeSquare`, `AnnotationTypeCircle`, `AnnotationTypeLine`, `AnnotationTypeInk`, `AnnotationTypeText`, `AnnotationTypeFreeText`, `AnnotationTypeStamp`, `AnnotationTypeFileAttachment`, `AnnotationTypeRedact`
 - Concrete types: `LinkAnnotation`, `HighlightAnnotation`, `UnderlineAnnotation`, `StrikeOutAnnotation`, `SquigglyAnnotation`, `WidgetAnnotation` (existing form fields, read-only via this surface), `GenericAnnotation` (catch-all for unsupported subtypes)
 - `AnnotationCollection` — `Add(a) error`, `At(i) Annotation`, `Delete(a) bool`, `DeleteAt(i) error`, `Count() int`, `All() []Annotation`. Add panics on nil; idempotent same-page; errors on cross-page re-attach
 - Constructors: `NewLinkAnnotation(page, rect)`, `NewHighlightAnnotation(page, rect)`, `NewUnderlineAnnotation(page, rect)`, `NewStrikeOutAnnotation(page, rect)`, `NewSquigglyAnnotation(page, rect)`
@@ -180,6 +182,15 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `StampAnnotation` — rubber-stamp annotation. `Name()/SetName(StampName)`, `RawName()/SetRawName(string)` (escape hatch for non-spec names). Custom image override via `SetCustomImage(path)/SetCustomImageFromStream(r)/ClearCustomImage()`. Border via `drawingAnnotationBase`. Constructor `NewStampAnnotation(page, rect, name)`. Library-default visuals for all 14 predefined names (color-coded: green=positive, red=warning, orange=informational, gray=neutral)
 - `StampName` enum — 14 names per ISO 32000-1 §12.5.6.13 Table 184: `StampNameApproved`, `StampNameAsIs`, `StampNameConfidential`, `StampNameDepartmental`, `StampNameDraft`, `StampNameExperimental`, `StampNameExpired`, `StampNameFinal`, `StampNameForComment`, `StampNameForPublicRelease`, `StampNameNotApproved`, `StampNameNotForPublicRelease`, `StampNameSold`, `StampNameTopSecret`, plus `StampNameUnknown` for non-spec names
 - All three types regenerate `/AP/N` on every property setter (TextAnnotation has no /AP — `RegenerateAppearance()` is no-op for API symmetry); explicit `RegenerateAppearance()` method exposed on each type
+
+**`annotation_fileattachment.go` / `annotation_redact.go` / `appearance_redact.go` / `redact_apply*.go`**
+- `FileAttachmentAnnotation` — embedded file annotation. `Icon()/SetIcon(i)`, `SetFile(path)/SetFileFromStream(r, name)`, `HasFile()`, read-only metadata `FileName/FileMIMEType/FileSize/FileBytes/FileDescription/SetFileDescription`. Constructor `NewFileAttachmentAnnotation(page, position Point)` — auto-bbox 24×24pt. No /AP — viewers render the icon themselves
+- `FileAttachmentIcon` enum — `FileAttachmentIconPaperclip` (default), `FileAttachmentIconGraph`, `FileAttachmentIconPushPin`, `FileAttachmentIconTag`, `FileAttachmentIconUnknown`. MIME type auto-detected from file extension via `mime.TypeByExtension`; embedded file stored as a `/EmbeddedFile` stream referenced by a `/Filespec` dict
+- `RedactAnnotation` — mark + apply redaction. `QuadPoints()/SetQuadPoints`, `InteriorColor()/SetInteriorColor`, `OverlayText()/SetOverlayText`, `RepeatOverlayText()/SetRepeatOverlayText`, `OverlayTextStyle()/SetOverlayTextStyle`. Border via `drawingAnnotationBase`. Mark-mode `/AP/N` renders quad fills + optional overlay preview; destructive content removal via `(*Document).ApplyRedactions()`. Constructor `NewRedactAnnotation(page, rect)`
+- `(*Document).ApplyRedactions() error` — destructively removes content inside every `/Redact` annotation's `/QuadPoints` (or `/Rect`) regions: text glyphs (per-glyph filter with TJ kerning gaps to preserve surviving positions), `Do` XObject invocations (drop or clip), and drawing paths (drop or clip). After rewrite, fills each quad with `/IC` color and renders `/OverlayText` (centered or tiled if `/Repeat`); then removes the redact annotations from `/Annots`. Best-effort semantics — partial state on failure
+- `(*Document).ValidateRedactions() error` — pre-flight dry-run parseability check on every redact-bearing page; recommended before `ApplyRedactions`
+- `NewJavaScriptAction(script string) *JavaScriptAction` — public constructor for `/JavaScript` actions (parse-only since Subepic 1). Includes documented security warning — embedded JavaScript executes in the recipient's viewer
+- Apply pipeline files: `redact_apply.go` orchestrates; `redact_apply_text.go` rewrites Tj/TJ/'/" with per-glyph filtering; `redact_apply_image.go` clips/drops `Do` invocations using even-odd clip paths; `redact_apply_path.go` clips/drops path-construction sequences buffered until a paint terminator
 
 **`validate.go`**
 - `Validate(inputPath)` — checks a PDF for structural integrity; returns `*ValidationReport` with a `Valid` flag and a list of `ValidationIssue` (code + message)
