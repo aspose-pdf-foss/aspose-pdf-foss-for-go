@@ -69,3 +69,90 @@ func parseRedactAnnotation(base annotationBase) *RedactAnnotation {
 	a.regenerate = a.regenerateAP
 	return a
 }
+
+// InteriorColor returns the /IC fill color (used for both mark visual
+// and post-apply overlay). Returns nil if absent.
+func (a *RedactAnnotation) InteriorColor() *Color {
+	arr, ok := a.dict["/IC"].(pdfArray)
+	if !ok || len(arr) != 3 {
+		return nil
+	}
+	r, _ := toFloat(arr[0])
+	g, _ := toFloat(arr[1])
+	bl, _ := toFloat(arr[2])
+	return &Color{R: r, G: g, B: bl, A: 1}
+}
+
+// SetInteriorColor writes /IC. nil deletes the entry.
+func (a *RedactAnnotation) SetInteriorColor(c *Color) {
+	if c == nil {
+		delete(a.dict, "/IC")
+	} else {
+		a.dict["/IC"] = pdfArray{c.R, c.G, c.B}
+	}
+	a.regenerateAP()
+}
+
+// OverlayText returns /OverlayText. Empty string if absent.
+func (a *RedactAnnotation) OverlayText() string {
+	return decodeFormString(a.dict["/OverlayText"])
+}
+
+// SetOverlayText writes /OverlayText. Empty string deletes the entry.
+func (a *RedactAnnotation) SetOverlayText(s string) {
+	if s == "" {
+		delete(a.dict, "/OverlayText")
+	} else {
+		a.dict["/OverlayText"] = encodeFormString(s)
+	}
+	a.regenerateAP()
+}
+
+// RepeatOverlayText returns /Repeat. False if absent.
+func (a *RedactAnnotation) RepeatOverlayText() bool {
+	v, _ := a.dict["/Repeat"].(bool)
+	return v
+}
+
+// SetRepeatOverlayText writes /Repeat. False removes the entry.
+func (a *RedactAnnotation) SetRepeatOverlayText(repeat bool) {
+	if repeat {
+		a.dict["/Repeat"] = true
+	} else {
+		delete(a.dict, "/Repeat")
+	}
+	a.regenerateAP()
+}
+
+// OverlayTextStyle returns the style reconstructed from /DA + /Q.
+// Background is not relevant for redact overlay.
+func (a *RedactAnnotation) OverlayTextStyle() TextStyle {
+	var style TextStyle
+	daRaw, _ := a.dict["/DA"].(string)
+	style.Font, style.Size, style.Color = parseDefaultAppearance(daRaw)
+	if q, ok := a.dict["/Q"]; ok {
+		switch toInt(q) {
+		case 1:
+			style.HAlign = HAlignCenter
+		case 2:
+			style.HAlign = HAlignRight
+		default:
+			style.HAlign = HAlignLeft
+		}
+	}
+	return style
+}
+
+// SetOverlayTextStyle writes /DA + /Q.
+func (a *RedactAnnotation) SetOverlayTextStyle(s TextStyle) {
+	a.dict["/DA"] = formatDefaultAppearance(s)
+	switch s.HAlign {
+	case HAlignCenter:
+		a.dict["/Q"] = 1
+	case HAlignRight:
+		a.dict["/Q"] = 2
+	default:
+		delete(a.dict, "/Q")
+	}
+	a.regenerateAP()
+}
