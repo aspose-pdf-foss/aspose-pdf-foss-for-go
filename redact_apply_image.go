@@ -1,6 +1,5 @@
 package asposepdf
 
-import "strconv"
 
 // rewriteImageOperatorsInStream removes XObject invocations (Do) whose
 // painted bbox falls entirely inside any redact region, and wraps
@@ -185,8 +184,6 @@ func readCMMatrix(operands []pdfValue) ([6]float64, bool) {
 		case int:
 			m[i] = float64(v)
 		default:
-			// Try string conversion as a last resort.
-			_ = strconv.FormatFloat(0, 'f', -1, 64) // keep import used
 			return [6]float64{}, false
 		}
 	}
