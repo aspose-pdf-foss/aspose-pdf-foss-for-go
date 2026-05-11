@@ -1,6 +1,9 @@
 package asposepdf
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ValidateRedactions performs a pre-flight dry-run parseability check on
 // every page that has at least one RedactAnnotation. Returns the first
@@ -107,7 +110,15 @@ func applyRedactionsToPage(p *Page) error {
 		return fmt.Errorf("replace content: %w", err)
 	}
 
-	// 6. Remove every redact annotation from the collection.
+	// 6. Render overlay (fill + optional text) for each redact region.
+	// Must happen BEFORE deleting the annotations so accessors still work.
+	for _, ra := range redacts {
+		if err := renderRedactOverlay(p, ra); err != nil {
+			return fmt.Errorf("overlay: %w", err)
+		}
+	}
+
+	// 7. Remove every redact annotation from the collection.
 	for _, ra := range redacts {
 		coll.Delete(ra)
 	}
@@ -150,4 +161,95 @@ func pageHasRedact(p *Page) bool {
 		}
 	}
 	return false
+}
+
+// renderRedactOverlay draws the post-redaction visual for one RedactAnnotation:
+//  1. An opaque fill block in the /IC color (default black) over each quad.
+//  2. Overlay text centered in each quad (if /OverlayText is non-empty).
+//     If /Repeat is true the text is tiled horizontally across the quad.
+func renderRedactOverlay(p *Page, ra *RedactAnnotation) error {
+	// 1. Determine fill color: default to opaque black.
+	fill := Color{R: 0, G: 0, B: 0, A: 1}
+	if ic := ra.InteriorColor(); ic != nil {
+		fill = *ic
+	}
+
+	// 2. Determine quads: fall back to /Rect as a single quad.
+	quads := ra.QuadPoints()
+	if len(quads) == 0 {
+		quads = []QuadPoint{rectAsQuadPoint(ra.Rect())}
+	}
+
+	// 3. Emit fill block for each quad.
+	for _, q := range quads {
+		minX, minY, maxX, maxY := boundsOfQuad(q)
+		ops := fmt.Sprintf("\nq\n%s %s %s rg\n%s %s %s %s re\nf\nQ\n",
+			formatFloat(fill.R), formatFloat(fill.G), formatFloat(fill.B),
+			formatFloat(minX), formatFloat(minY),
+			formatFloat(maxX-minX), formatFloat(maxY-minY))
+		if err := p.appendToContentStream([]byte(ops)); err != nil {
+			return err
+		}
+	}
+
+	// 4. Render overlay text if /OverlayText is present.
+	overlay := ra.OverlayText()
+	if overlay == "" {
+		return nil
+	}
+
+	style := ra.OverlayTextStyle()
+	if style.Font == nil {
+		style.Font = FontHelvetica
+	}
+	if style.Size == 0 {
+		style.Size = 10
+	}
+	// Default text color: white on dark fill, black on light fill.
+	if style.Color == nil {
+		if isDarkColor(fill) {
+			white := Color{R: 1, G: 1, B: 1, A: 1}
+			style.Color = &white
+		} else {
+			black := Color{R: 0, G: 0, B: 0, A: 1}
+			style.Color = &black
+		}
+	}
+	// Default horizontal alignment: center.
+	if style.HAlign == HAlignLeft {
+		style.HAlign = HAlignCenter
+	}
+
+	repeat := ra.RepeatOverlayText()
+	for _, q := range quads {
+		minX, minY, maxX, maxY := boundsOfQuad(q)
+		rect := Rectangle{LLX: minX, LLY: minY, URX: maxX, URY: maxY}
+
+		text := overlay
+		if repeat {
+			// Estimate text width: ~0.5em per character at the given font size.
+			estWidth := float64(len(overlay)) * style.Size * 0.5
+			rectWidth := maxX - minX
+			copies := 1
+			if estWidth > 0 {
+				copies = int(rectWidth/estWidth) + 1
+				if copies < 1 {
+					copies = 1
+				}
+			}
+			text = strings.Repeat(overlay+" ", copies)
+		}
+
+		if err := p.AddText(text, style, rect); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// isDarkColor returns true if the color's perceived luminance is below 0.5.
+// Uses the standard relative luminance formula (ITU-R BT.709).
+func isDarkColor(c Color) bool {
+	return 0.2126*c.R+0.7152*c.G+0.0722*c.B < 0.5
 }

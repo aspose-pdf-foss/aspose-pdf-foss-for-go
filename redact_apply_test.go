@@ -197,3 +197,80 @@ func TestApplyRedactionsCoexistsWithOtherAnnotations(t *testing.T) {
 		t.Errorf("Highlight should survive, count = %d", counts[pdf.AnnotationTypeHighlight])
 	}
 }
+
+func TestApplyRedactionsOverlayText(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	page.AddText("Confidential",
+		pdf.TextStyle{Font: pdf.FontHelvetica, Size: 14},
+		pdf.Rectangle{LLX: 50, LLY: 700, URX: 545, URY: 720})
+	ra := pdf.NewRedactAnnotation(page, pdf.Rectangle{LLX: 50, LLY: 700, URX: 545, URY: 720})
+	ra.SetInteriorColor(&pdf.Color{R: 0, G: 0, B: 0, A: 1})
+	ra.SetOverlayText("REDACTED")
+	page.Annotations().Add(ra)
+
+	if err := doc.ApplyRedactions(); err != nil {
+		t.Fatalf("ApplyRedactions: %v", err)
+	}
+
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	text, _ := doc2.ExtractText()
+	pageText := strings.Join(text, "\n")
+	if strings.Contains(pageText, "Confidential") {
+		t.Errorf("expected Confidential removed, got %q", pageText)
+	}
+	if !strings.Contains(pageText, "REDACTED") {
+		t.Errorf("expected REDACTED overlay present, got %q", pageText)
+	}
+}
+
+func TestApplyRedactionsRepeatOverlay(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	page.AddText("Sensitive info to be hidden",
+		pdf.TextStyle{Font: pdf.FontHelvetica, Size: 12},
+		pdf.Rectangle{LLX: 50, LLY: 700, URX: 545, URY: 720})
+	ra := pdf.NewRedactAnnotation(page, pdf.Rectangle{LLX: 50, LLY: 700, URX: 545, URY: 720})
+	ra.SetOverlayText("X")
+	ra.SetRepeatOverlayText(true)
+	page.Annotations().Add(ra)
+
+	if err := doc.ApplyRedactions(); err != nil {
+		t.Fatalf("ApplyRedactions: %v", err)
+	}
+
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	text, _ := doc2.ExtractText()
+	pageText := strings.Join(text, "\n")
+	// Expect multiple X's in extracted text (tiled).
+	if count := strings.Count(pageText, "X"); count < 2 {
+		t.Errorf("expected >=2 X's tiled, got %d in %q", count, pageText)
+	}
+}
+
+func TestApplyRedactionsNoOverlayKeepsFill(t *testing.T) {
+	// /IC set but no /OverlayText — should still emit a fill block.
+	// We can't easily verify the visual but at least confirm Apply succeeds
+	// and the redact annotation is removed.
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	page.AddText("Hide me",
+		pdf.TextStyle{Font: pdf.FontHelvetica, Size: 12},
+		pdf.Rectangle{LLX: 50, LLY: 700, URX: 200, URY: 720})
+	ra := pdf.NewRedactAnnotation(page, pdf.Rectangle{LLX: 50, LLY: 700, URX: 200, URY: 720})
+	ra.SetInteriorColor(&pdf.Color{R: 1, G: 0, B: 0, A: 1}) // red fill, no overlay text
+	page.Annotations().Add(ra)
+
+	if err := doc.ApplyRedactions(); err != nil {
+		t.Fatalf("ApplyRedactions: %v", err)
+	}
+
+	// Verify redact annotation is gone.
+	if got := page.Annotations().Count(); got != 0 {
+		t.Errorf("expected annotation removed, Count = %d", got)
+	}
+}
