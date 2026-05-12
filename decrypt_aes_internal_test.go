@@ -31,3 +31,57 @@ func TestDecryptObjectAES128_GarbledCiphertextBadPadding(t *testing.T) {
 		t.Error("expected PKCS#7 error on garbled ciphertext, got nil")
 	}
 }
+
+func TestBuildDecryptStateV4R4_MissingCF(t *testing.T) {
+	encDict := pdfDict{
+		"/Filter": pdfName("/Standard"),
+		"/V":      4,
+		"/R":      4,
+		"/Length": 128,
+		"/P":      -4,
+		"/O":      string(bytes.Repeat([]byte{0x01}, 32)),
+		"/U":      string(bytes.Repeat([]byte{0x02}, 32)),
+		// /CF intentionally missing
+		"/StmF": pdfName("/StdCF"),
+		"/StrF": pdfName("/StdCF"),
+	}
+	trailer := pdfDict{"/ID": pdfArray{string(bytes.Repeat([]byte{0xCD}, 16))}}
+	if _, err := buildDecryptStateV4R4(encDict, trailer, "x"); err == nil {
+		t.Error("expected error for missing /CF")
+	}
+}
+
+func TestBuildDecryptStateV4R4_WrongCFM(t *testing.T) {
+	encDict := pdfDict{
+		"/Filter": pdfName("/Standard"),
+		"/V":      4, "/R": 4, "/Length": 128, "/P": -4,
+		"/O": string(bytes.Repeat([]byte{0x01}, 32)),
+		"/U": string(bytes.Repeat([]byte{0x02}, 32)),
+		"/CF": pdfDict{
+			"/StdCF": pdfDict{
+				"/Type": pdfName("/CryptFilter"),
+				"/CFM":  pdfName("/V2"), // wrong — should be /AESV2
+			},
+		},
+		"/StmF": pdfName("/StdCF"),
+		"/StrF": pdfName("/StdCF"),
+	}
+	trailer := pdfDict{"/ID": pdfArray{string(bytes.Repeat([]byte{0xCD}, 16))}}
+	if _, err := buildDecryptStateV4R4(encDict, trailer, "x"); err == nil {
+		t.Error("expected error for /CFM /V2 in V=4 dict")
+	}
+}
+
+func TestBuildDecryptStateDispatcher(t *testing.T) {
+	// Unsupported V/R → error mentioning unsupported.
+	encDict := pdfDict{
+		"/Filter": pdfName("/Standard"),
+		"/V":      5,
+		"/R":      6,
+	}
+	trailer := pdfDict{}
+	_, err := buildDecryptState(encDict, trailer, "x")
+	if err == nil {
+		t.Error("expected error for V=5 R=6 (not yet supported)")
+	}
+}

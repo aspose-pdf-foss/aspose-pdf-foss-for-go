@@ -11,14 +11,33 @@ import (
 // OpenStreamWithPassword to supply a user or owner password.
 var ErrEncrypted = errors.New("PDF is encrypted; use OpenWithPassword")
 
-// buildDecryptState parses the /Encrypt dict and the trailer's /ID array,
+// buildDecryptState parses an /Encrypt dict and returns the per-document
+// encryption state for decryption. Dispatches by /V and /R: V=2 R=3 →
+// RC4-128 Standard Security Handler; V=4 R=4 → AES-128 via /CFM /AESV2.
+func buildDecryptState(encDict pdfDict, trailer pdfDict, password string) (*encryptState, error) {
+	filter := dictGetName(encDict, "/Filter")
+	if filter != "/Standard" {
+		return nil, fmt.Errorf("unsupported /Filter %q (only /Standard is implemented)", filter)
+	}
+	v := dictGetInt(encDict, "/V")
+	r := dictGetInt(encDict, "/R")
+	switch {
+	case v == 2 && r == 3:
+		return buildDecryptStateV2R3(encDict, trailer, password)
+	case v == 4 && r == 4:
+		return buildDecryptStateV4R4(encDict, trailer, password)
+	default:
+		return nil, fmt.Errorf("unsupported security handler V=%d R=%d", v, r)
+	}
+}
+
+// buildDecryptStateV2R3 parses the /Encrypt dict and the trailer's /ID array,
 // verifies the supplied password against /U (user) or /O (owner), and
 // returns an encryptState whose document key is ready to derive per-object
 // keys for decryption.
 //
-// Currently supports only the standard security handler we ourselves write:
-// /Filter /Standard, /V 2, /R 3, RC4-128.
-func buildDecryptState(encDict pdfDict, trailer pdfDict, password string) (*encryptState, error) {
+// Supports only /Filter /Standard, /V 2, /R 3, RC4-128.
+func buildDecryptStateV2R3(encDict pdfDict, trailer pdfDict, password string) (*encryptState, error) {
 	filter := dictGetName(encDict, "/Filter")
 	if filter != "/Standard" {
 		return nil, fmt.Errorf("unsupported /Filter %q (only /Standard is implemented)", filter)
