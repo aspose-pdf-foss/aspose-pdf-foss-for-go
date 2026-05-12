@@ -154,7 +154,7 @@ func TestEncryptSameUserOwner(t *testing.T) {
 
 // TestEncryptRC4Symmetric verifies that encrypting twice (RC4 XOR) restores the original.
 func TestEncryptRC4Symmetric(t *testing.T) {
-	s := &encryptState{key: make([]byte, encKeyLen)}
+	s := &encryptState{algorithm: EncryptionAlgRC4_128, key: make([]byte, encKeyLen)}
 	copy(s.key, []byte("0123456789abcdef"))
 
 	original := []byte("Hello, PDF encryption!")
