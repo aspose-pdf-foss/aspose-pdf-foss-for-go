@@ -2,6 +2,7 @@ package asposepdf
 
 import (
 	"crypto/aes"
+	"crypto/cipher"
 	"fmt"
 )
 
@@ -23,4 +24,26 @@ func stripPKCS7(data []byte) ([]byte, error) {
 		}
 	}
 	return data[:len(data)-pad], nil
+}
+
+// decryptObjectAES128 is the inverse of encryptBytesAES128. The first
+// 16 bytes of ciphertext are the IV; the remainder is AES-128-CBC
+// ciphertext of PKCS#7-padded plaintext under the per-object key.
+func decryptObjectAES128(s *encryptState, objNum, gen int, ciphertext []byte) ([]byte, error) {
+	key := objectKeyAES128(s.key, objNum, gen)
+	if len(ciphertext) < aes.BlockSize {
+		return nil, fmt.Errorf("AES ciphertext shorter than IV (%d bytes)", len(ciphertext))
+	}
+	iv := ciphertext[:aes.BlockSize]
+	body := ciphertext[aes.BlockSize:]
+	if len(body)%aes.BlockSize != 0 {
+		return nil, fmt.Errorf("AES ciphertext body not block-aligned (%d bytes)", len(body))
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	plain := make([]byte, len(body))
+	cipher.NewCBCDecrypter(block, iv).CryptBlocks(plain, body)
+	return stripPKCS7(plain)
 }

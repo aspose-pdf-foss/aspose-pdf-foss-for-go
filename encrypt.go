@@ -166,11 +166,12 @@ func (c *encryptConfig) effectivePermissions() int32 {
 
 // encryptState holds the computed values needed to encrypt a single PDF write.
 type encryptState struct {
-	key         []byte // 16-byte document encryption key
-	fileID      []byte // 16-byte random file identifier
-	ownerEntry  []byte // 32-byte /O value for the /Encrypt dict
-	userEntry   []byte // 32-byte /U value for the /Encrypt dict
-	permissions int32  // /P value propagated to /Encrypt dict
+	algorithm   EncryptionAlgorithm // used by Task 9's dispatcher
+	key         []byte              // 16-byte document encryption key
+	fileID      []byte              // 16-byte random file identifier
+	ownerEntry  []byte              // 32-byte /O value for the /Encrypt dict
+	userEntry   []byte              // 32-byte /U value for the /Encrypt dict
+	permissions int32               // /P value propagated to /Encrypt dict
 }
 
 // newEncryptState derives all encryption parameters from cfg.

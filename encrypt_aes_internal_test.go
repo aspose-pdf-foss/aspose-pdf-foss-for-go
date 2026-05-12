@@ -109,3 +109,50 @@ func TestObjectKeyAES128_DiffersFromRC4Key(t *testing.T) {
 		t.Errorf("AES and RC4 keys must differ for the same input")
 	}
 }
+
+func TestEncryptBytesAES128_RoundTrip(t *testing.T) {
+	state := &encryptState{
+		algorithm: EncryptionAlgAES128,
+		key:       bytes.Repeat([]byte{0xCD}, 16),
+	}
+	inputs := [][]byte{
+		[]byte("Hello world"),
+		[]byte("a"),
+		[]byte(""),
+		bytes.Repeat([]byte{0x42}, 1024),
+	}
+	for _, plain := range inputs {
+		cipher, err := encryptBytesAES128(state, 42, 0, plain)
+		if err != nil {
+			t.Fatalf("encrypt: %v", err)
+		}
+		// Ciphertext must be at least one block of IV + at least one block of body.
+		if len(cipher) < 2*aes.BlockSize {
+			t.Errorf("ciphertext length %d < 32 (IV + min body)", len(cipher))
+		}
+		if len(cipher)%aes.BlockSize != 0 {
+			t.Errorf("ciphertext length %d not block-aligned", len(cipher))
+		}
+		// Decrypt and confirm it matches.
+		got, err := decryptObjectAES128(state, 42, 0, cipher)
+		if err != nil {
+			t.Fatalf("decrypt: %v", err)
+		}
+		if !bytes.Equal(got, plain) {
+			t.Errorf("roundtrip differs: got %v, want %v", got, plain)
+		}
+	}
+}
+
+func TestEncryptBytesAES128_IVRandomness(t *testing.T) {
+	state := &encryptState{
+		algorithm: EncryptionAlgAES128,
+		key:       bytes.Repeat([]byte{0xCD}, 16),
+	}
+	plain := []byte("identical input")
+	c1, _ := encryptBytesAES128(state, 1, 0, plain)
+	c2, _ := encryptBytesAES128(state, 1, 0, plain)
+	if bytes.Equal(c1, c2) {
+		t.Error("two encryptions of identical input produced identical output — IV not random")
+	}
+}

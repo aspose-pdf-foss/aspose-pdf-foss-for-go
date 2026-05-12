@@ -1,7 +1,12 @@
 package asposepdf
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	cryptorand "crypto/rand"
 	"crypto/md5"
+	"fmt"
+	"io"
 )
 
 // addPKCS7 appends PKCS#7 padding to data. The padding length is always
@@ -29,4 +34,27 @@ func objectKeyAES128(docKey []byte, objNum, gen int) []byte {
 		's', 'A', 'l', 'T')
 	sum := md5.Sum(buf)
 	return sum[:16] // full MD5 output for AES-128
+}
+
+// encryptBytesAES128 encrypts plaintext under the per-object AES-128 key
+// derived from state.key, objNum, and gen. The output is a 16-byte
+// random IV followed by AES-128-CBC ciphertext of plaintext with
+// PKCS#7 padding. ISO 32000-1 §7.6.2 / §7.6.3.4.
+func encryptBytesAES128(s *encryptState, objNum, gen int, plaintext []byte) ([]byte, error) {
+	key := objectKeyAES128(s.key, objNum, gen)
+	padded := addPKCS7(plaintext, aes.BlockSize)
+	iv := make([]byte, aes.BlockSize)
+	if _, err := io.ReadFull(cryptorand.Reader, iv); err != nil {
+		return nil, fmt.Errorf("AES IV: %w", err)
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	body := make([]byte, len(padded))
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(body, padded)
+	out := make([]byte, len(iv)+len(body))
+	copy(out, iv)
+	copy(out[len(iv):], body)
+	return out, nil
 }
