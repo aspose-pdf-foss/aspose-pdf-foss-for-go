@@ -3,8 +3,11 @@ package asposepdf
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"crypto/sha512"
+	"fmt"
+	"io"
 )
 
 // hashV5R6 computes the Algorithm 2.B hash per ISO 32000-2 §7.6.4.3.4.
@@ -65,4 +68,30 @@ func hashV5R6(password, salt, extra []byte) []byte {
 		}
 	}
 	return K[0:32]
+}
+
+// encryptBytesAES256 encrypts plaintext under the document's File
+// Encryption Key (FEK) using AES-256-CBC with PKCS#7 padding and a
+// random 16-byte IV prepended. V=5 R=6 has no per-object key derivation
+// (unlike V≤4 Algorithm 1/1.A) — every string and stream uses the FEK
+// directly. ISO 32000-2 §7.6.4.6.
+func encryptBytesAES256(s *encryptState, plaintext []byte) ([]byte, error) {
+	if len(s.key) != 32 {
+		return nil, fmt.Errorf("AES-256 requires 32-byte key, got %d bytes", len(s.key))
+	}
+	padded := addPKCS7(plaintext, aes.BlockSize)
+	iv := make([]byte, aes.BlockSize)
+	if _, err := io.ReadFull(cryptorand.Reader, iv); err != nil {
+		return nil, fmt.Errorf("AES-256 IV: %w", err)
+	}
+	block, err := aes.NewCipher(s.key) // 32-byte key → AES-256
+	if err != nil {
+		return nil, fmt.Errorf("AES-256 NewCipher: %w", err)
+	}
+	body := make([]byte, len(padded))
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(body, padded)
+	out := make([]byte, len(iv)+len(body))
+	copy(out, iv)
+	copy(out[len(iv):], body)
+	return out, nil
 }
