@@ -186,6 +186,10 @@ type encryptState struct {
 
 // newEncryptState derives all encryption parameters from cfg.
 func newEncryptState(cfg *encryptConfig) (*encryptState, error) {
+	if cfg.algorithm == EncryptionAlgAES256 {
+		return newEncryptStateV5R6(cfg)
+	}
+
 	fileID := make([]byte, 16)
 	if _, err := io.ReadFull(cryptorand.Reader, fileID); err != nil {
 		return nil, fmt.Errorf("generate file ID: %w", err)
@@ -297,6 +301,8 @@ func (s *encryptState) encryptBytes(objNum, gen int, data []byte) ([]byte, error
 		return encryptBytesRC4(s, objNum, data), nil
 	case EncryptionAlgAES128:
 		return encryptBytesAES128(s, objNum, gen, data)
+	case EncryptionAlgAES256:
+		return encryptBytesAES256(s, data) // ignores objNum, gen (no per-object key)
 	}
 	return nil, fmt.Errorf("encryptBytes: unknown algorithm %d", s.algorithm)
 }

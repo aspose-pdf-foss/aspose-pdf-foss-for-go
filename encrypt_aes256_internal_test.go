@@ -205,3 +205,26 @@ func TestNewEncryptStateV5R6_RandomFEKEachCall(t *testing.T) {
 		t.Error("FEK should be random per newEncryptStateV5R6 call")
 	}
 }
+
+func TestEncryptBytesDispatcher_AES256(t *testing.T) {
+	plain := []byte("dispatcher routes correctly")
+	aes256State := &encryptState{
+		algorithm: EncryptionAlgAES256,
+		key:       bytes.Repeat([]byte{0xCD}, 32),
+	}
+	out, err := aes256State.encryptBytes(1, 0, plain)
+	if err != nil {
+		t.Fatalf("dispatcher: %v", err)
+	}
+	if len(out) < 2*aes.BlockSize {
+		t.Errorf("output length %d < 32 (IV + min body)", len(out))
+	}
+	// Roundtrip via decrypt path.
+	got, err := decryptObjectAES256(aes256State, out)
+	if err != nil {
+		t.Fatalf("decrypt: %v", err)
+	}
+	if !bytes.Equal(got, plain) {
+		t.Errorf("dispatcher roundtrip failed")
+	}
+}
