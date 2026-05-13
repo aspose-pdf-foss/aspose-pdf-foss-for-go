@@ -62,8 +62,9 @@ func hashV5R6(password, salt, extra []byte) []byte {
 			K = sum512[:]
 		}
 
-		// Step e+f: termination — minimum 64 rounds, then E_last <= round - 32.
-		if round >= 64 && int(E[len(E)-1]) <= round-32 {
+		// Step e+f: termination — minimum 64 rounds (0-indexed: round 63 is the 64th),
+		// then E_last <= round - 32. ISO 32000-2 §7.6.4.3.4 step f.
+		if round >= 63 && int(E[len(E)-1]) <= round-32 {
 			break
 		}
 	}
