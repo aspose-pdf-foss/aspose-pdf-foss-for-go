@@ -26,6 +26,8 @@ func buildDecryptState(encDict pdfDict, trailer pdfDict, password string) (*encr
 		return buildDecryptStateV2R3(encDict, trailer, password)
 	case v == 4 && r == 4:
 		return buildDecryptStateV4R4(encDict, trailer, password)
+	case v == 5 && r == 6:
+		return buildDecryptStateV5R6(encDict, password) // trailer/ID not used for V=5 R=6
 	default:
 		return nil, fmt.Errorf("unsupported security handler V=%d R=%d", v, r)
 	}

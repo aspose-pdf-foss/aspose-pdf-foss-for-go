@@ -1,6 +1,7 @@
 package asposepdf
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"fmt"
@@ -57,4 +58,143 @@ func verifyPermsV5R6(fek, permsEnc []byte, declaredP int32) error {
 		return fmt.Errorf("/Perms tampered: P=%d in block vs %d in dict", permsP, declaredP)
 	}
 	return nil
+}
+
+// buildDecryptStateV5R6 parses a /V=5 /R=6 /Encrypt dict, validates the
+// /CF/StdCF/CFM=/AESV3 structure, validates the password against /U
+// (user) or /O (owner), recovers the FEK from /UE or /OE, and verifies
+// the /Perms tamper-detection block. Per ISO 32000-2 §7.6.4.
+func buildDecryptStateV5R6(encDict pdfDict, password string) (*encryptState, error) {
+	// 1. Validate /CF/StdCF/CFM == /AESV3.
+	cfRaw, ok := encDict["/CF"].(pdfDict)
+	if !ok {
+		return nil, fmt.Errorf("V=5 R=6: /CF dict missing")
+	}
+	stmName, _ := encDict["/StmF"].(pdfName)
+	if stmName == "" {
+		return nil, fmt.Errorf("V=5 R=6: /StmF missing")
+	}
+	if strName, _ := encDict["/StrF"].(pdfName); strName != "" && strName != stmName {
+		return nil, fmt.Errorf("V=5 R=6: /StmF and /StrF differ — unsupported")
+	}
+	cfEntry, ok := cfRaw[string(stmName)].(pdfDict)
+	if !ok {
+		return nil, fmt.Errorf("V=5 R=6: /CF/%s missing", stmName)
+	}
+	cfm, _ := cfEntry["/CFM"].(pdfName)
+	if cfm != "/AESV3" {
+		return nil, fmt.Errorf("V=5 R=6: unsupported /CFM %q (want /AESV3)", cfm)
+	}
+
+	// 2. Read /U, /O, /UE, /OE, /Perms — all required with exact lengths.
+	U, err := readBytesEntryExact(encDict, "/U", 48)
+	if err != nil {
+		return nil, err
+	}
+	O, err := readBytesEntryExact(encDict, "/O", 48)
+	if err != nil {
+		return nil, err
+	}
+	UE, err := readBytesEntryExact(encDict, "/UE", 32)
+	if err != nil {
+		return nil, err
+	}
+	OE, err := readBytesEntryExact(encDict, "/OE", 32)
+	if err != nil {
+		return nil, err
+	}
+	permsEnc, err := readBytesEntryExact(encDict, "/Perms", 16)
+	if err != nil {
+		return nil, err
+	}
+
+	pVal, ok := encDict["/P"]
+	if !ok {
+		return nil, fmt.Errorf("V=5 R=6: /P missing")
+	}
+	permissions := int32(uint32(toInt(pVal)))
+
+	// 3. Try user password.
+	pwBytes := []byte(password)
+	fek, ok := tryUserPasswordV5R6(pwBytes, U, UE)
+	if !ok {
+		// 4. Try owner password.
+		fek, ok = tryOwnerPasswordV5R6(pwBytes, U, O, OE)
+	}
+	if !ok {
+		return nil, fmt.Errorf("invalid password")
+	}
+
+	// 5. Verify /Perms tamper-detection.
+	if err := verifyPermsV5R6(fek, permsEnc, permissions); err != nil {
+		return nil, err
+	}
+
+	return &encryptState{
+		algorithm:     EncryptionAlgAES256,
+		key:           fek,
+		userEntry:     U,
+		ownerEntry:    O,
+		userKeyEntry:  UE,
+		ownerKeyEntry: OE,
+		permsEntry:    permsEnc,
+		permissions:   permissions,
+	}, nil
+}
+
+// tryUserPasswordV5R6 validates pwd against /U and decrypts /UE to
+// recover the FEK on success. Returns (fek, true) if matched.
+func tryUserPasswordV5R6(pwd, U, UE []byte) ([]byte, bool) {
+	storedHash := U[0:32]
+	validSalt := U[32:40]
+	keySalt := U[40:48]
+	if !bytes.Equal(hashV5R6(pwd, validSalt, nil), storedHash) {
+		return nil, false
+	}
+	return unwrapFEK(hashV5R6(pwd, keySalt, nil), UE)
+}
+
+// tryOwnerPasswordV5R6 validates pwd against /O (which incorporates the
+// full /U entry) and decrypts /OE to recover the FEK.
+func tryOwnerPasswordV5R6(pwd, U, O, OE []byte) ([]byte, bool) {
+	storedHash := O[0:32]
+	validSalt := O[32:40]
+	keySalt := O[40:48]
+	if !bytes.Equal(hashV5R6(pwd, validSalt, U), storedHash) {
+		return nil, false
+	}
+	return unwrapFEK(hashV5R6(pwd, keySalt, U), OE)
+}
+
+// unwrapFEK decrypts a 32-byte AES-256-CBC ciphertext (no padding,
+// 16-byte zero IV) under wrappingKey to recover the FEK.
+func unwrapFEK(wrappingKey, ciphertext []byte) ([]byte, bool) {
+	if len(ciphertext) != 32 {
+		return nil, false
+	}
+	block, err := aes.NewCipher(wrappingKey)
+	if err != nil {
+		return nil, false
+	}
+	fek := make([]byte, 32)
+	iv := make([]byte, 16) // 16 zero bytes per spec
+	cipher.NewCBCDecrypter(block, iv).CryptBlocks(fek, ciphertext)
+	return fek, true
+}
+
+// readBytesEntryExact reads a /Encrypt dict entry as raw bytes and
+// requires the length to match exactly.
+func readBytesEntryExact(dict pdfDict, key string, wantLen int) ([]byte, error) {
+	v, ok := dict[key]
+	if !ok {
+		return nil, fmt.Errorf("V=5 R=6: %s missing", key)
+	}
+	b, err := pdfStringBytes(v)
+	if err != nil {
+		return nil, fmt.Errorf("V=5 R=6: %s: %w", key, err)
+	}
+	if len(b) != wantLen {
+		return nil, fmt.Errorf("V=5 R=6: %s length = %d, want %d", key, len(b), wantLen)
+	}
+	return b, nil
 }
