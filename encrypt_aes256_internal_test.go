@@ -137,3 +137,71 @@ func TestBuildPermsBlock_EncryptMetadataFalse(t *testing.T) {
 		t.Errorf("byte 8 with EncryptMetadata=false = %q, want 'F'", block[8])
 	}
 }
+
+func TestNewEncryptStateV5R6_FieldLengths(t *testing.T) {
+	cfg := &encryptConfig{
+		algorithm:      EncryptionAlgAES256,
+		userPassword:   "user",
+		ownerPassword:  "owner",
+		permissions:    -4,
+		hasPermissions: true,
+	}
+	state, err := newEncryptStateV5R6(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.algorithm != EncryptionAlgAES256 {
+		t.Errorf("algorithm = %v", state.algorithm)
+	}
+	if len(state.key) != 32 {
+		t.Errorf("FEK length = %d, want 32", len(state.key))
+	}
+	if len(state.userEntry) != 48 {
+		t.Errorf("/U length = %d, want 48", len(state.userEntry))
+	}
+	if len(state.ownerEntry) != 48 {
+		t.Errorf("/O length = %d, want 48", len(state.ownerEntry))
+	}
+	if len(state.userKeyEntry) != 32 {
+		t.Errorf("/UE length = %d, want 32", len(state.userKeyEntry))
+	}
+	if len(state.ownerKeyEntry) != 32 {
+		t.Errorf("/OE length = %d, want 32", len(state.ownerKeyEntry))
+	}
+	if len(state.permsEntry) != 16 {
+		t.Errorf("/Perms length = %d, want 16", len(state.permsEntry))
+	}
+	if state.permissions != -4 {
+		t.Errorf("permissions = %d", state.permissions)
+	}
+}
+
+func TestNewEncryptStateV5R6_OwnerDefaultsToUser(t *testing.T) {
+	cfg := &encryptConfig{
+		algorithm:    EncryptionAlgAES256,
+		userPassword: "shared",
+		// OwnerPassword empty
+		hasPermissions: false,
+	}
+	state, err := newEncryptStateV5R6(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Owner-entry hash should still differ from user-entry hash because
+	// of distinct salts and the U_bytes-extra parameter.
+	if bytes.Equal(state.userEntry[0:32], state.ownerEntry[0:32]) {
+		t.Error("/U hash equals /O hash even though salts and extra differ")
+	}
+}
+
+func TestNewEncryptStateV5R6_RandomFEKEachCall(t *testing.T) {
+	cfg := &encryptConfig{
+		algorithm:    EncryptionAlgAES256,
+		userPassword: "x",
+	}
+	s1, _ := newEncryptStateV5R6(cfg)
+	s2, _ := newEncryptStateV5R6(cfg)
+	if bytes.Equal(s1.key, s2.key) {
+		t.Error("FEK should be random per newEncryptStateV5R6 call")
+	}
+}

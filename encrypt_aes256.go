@@ -96,6 +96,99 @@ func encryptBytesAES256(s *encryptState, plaintext []byte) ([]byte, error) {
 	return out, nil
 }
 
+// newEncryptStateV5R6 builds the full encrypt-side state for AES-256
+// V=5 R=6. Generates a random File Encryption Key (FEK), random salts,
+// and computes /U, /O, /UE, /OE, /Perms entries per ISO 32000-2 §7.6.4.
+func newEncryptStateV5R6(cfg *encryptConfig) (*encryptState, error) {
+	// 1. Random FEK (32 bytes).
+	fek := make([]byte, 32)
+	if _, err := io.ReadFull(cryptorand.Reader, fek); err != nil {
+		return nil, fmt.Errorf("FEK: %w", err)
+	}
+
+	// 2. Four 8-byte random salts.
+	validSaltU := make([]byte, 8)
+	keySaltU := make([]byte, 8)
+	validSaltO := make([]byte, 8)
+	keySaltO := make([]byte, 8)
+	for _, s := range [][]byte{validSaltU, keySaltU, validSaltO, keySaltO} {
+		if _, err := io.ReadFull(cryptorand.Reader, s); err != nil {
+			return nil, fmt.Errorf("V=5 R=6 salt: %w", err)
+		}
+	}
+
+	// 3. /U (48 bytes): hashV5R6(pwUser, validSaltU, nil) || validSaltU || keySaltU
+	pwUser := []byte(cfg.userPassword)
+	hashU := hashV5R6(pwUser, validSaltU, nil)
+	U := make([]byte, 0, 48)
+	U = append(U, hashU...)
+	U = append(U, validSaltU...)
+	U = append(U, keySaltU...)
+
+	// 4. /O (48 bytes): hashV5R6(pwOwner, validSaltO, U) || validSaltO || keySaltO
+	pwOwner := []byte(cfg.ownerPassword)
+	if cfg.ownerPassword == "" {
+		pwOwner = pwUser
+	}
+	hashO := hashV5R6(pwOwner, validSaltO, U)
+	O := make([]byte, 0, 48)
+	O = append(O, hashO...)
+	O = append(O, validSaltO...)
+	O = append(O, keySaltO...)
+
+	// 5. /UE: AES-256-CBC(wrappingU, IV=zero, FEK) → 32 bytes
+	wrappingU := hashV5R6(pwUser, keySaltU, nil)
+	UE, err := aes256CBCNoPadding(wrappingU, fek)
+	if err != nil {
+		return nil, fmt.Errorf("/UE: %w", err)
+	}
+
+	// 6. /OE: AES-256-CBC(wrappingO, IV=zero, FEK) → 32 bytes
+	wrappingO := hashV5R6(pwOwner, keySaltO, U)
+	OE, err := aes256CBCNoPadding(wrappingO, fek)
+	if err != nil {
+		return nil, fmt.Errorf("/OE: %w", err)
+	}
+
+	// 7. /Perms: AES-256-ECB(FEK, permsBlock) → 16 bytes
+	perms := cfg.effectivePermissions()
+	permsBlock := buildPermsBlock(perms, true)
+	cipherBlock, err := aes.NewCipher(fek)
+	if err != nil {
+		return nil, fmt.Errorf("/Perms NewCipher: %w", err)
+	}
+	permsEnc := make([]byte, 16)
+	cipherBlock.Encrypt(permsEnc, permsBlock)
+
+	return &encryptState{
+		algorithm:     EncryptionAlgAES256,
+		key:           fek,
+		userEntry:     U,
+		ownerEntry:    O,
+		userKeyEntry:  UE,
+		ownerKeyEntry: OE,
+		permsEntry:    permsEnc,
+		permissions:   perms,
+	}, nil
+}
+
+// aes256CBCNoPadding encrypts exactly 32 bytes (2 AES blocks) with the
+// given 32-byte key using AES-256-CBC and a 16-byte zero IV. Used for
+// /UE and /OE which wrap the FEK without padding.
+func aes256CBCNoPadding(key, plaintext []byte) ([]byte, error) {
+	if len(plaintext) != 32 {
+		return nil, fmt.Errorf("aes256CBCNoPadding: input must be 32 bytes, got %d", len(plaintext))
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	iv := make([]byte, aes.BlockSize) // 16 zero bytes per spec
+	out := make([]byte, 32)
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(out, plaintext)
+	return out, nil
+}
+
 // buildPermsBlock constructs the 16-byte permissions block per ISO
 // 32000-2 §7.6.4.6.2. The block is later AES-256-ECB encrypted under
 // the FEK and stored as /Perms for tamper-detection.
