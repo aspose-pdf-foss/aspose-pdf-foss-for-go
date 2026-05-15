@@ -192,3 +192,76 @@ func TestBuildOutlineObjects_Nested(t *testing.T) {
 		t.Error("parent /Count missing (has 1 child)")
 	}
 }
+
+func TestParseDestinationArray_XYZ(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	pageNum := page.pageObj().Num
+	arr := pdfArray{pdfRef{Num: pageNum}, pdfName("/XYZ"), 100.0, 800.0, 1.5}
+	d := parseDestinationArray(doc, arr)
+	if d == nil {
+		t.Fatal("parseDestinationArray returned nil")
+	}
+	xyz, ok := d.(*DestinationXYZ)
+	if !ok {
+		t.Fatalf("type = %T, want *DestinationXYZ", d)
+	}
+	if xyz.Left() != 100 || xyz.Top() != 800 || xyz.Zoom() != 1.5 {
+		t.Errorf("XYZ values: %v %v %v", xyz.Left(), xyz.Top(), xyz.Zoom())
+	}
+	if !xyz.HasLeft() || !xyz.HasTop() || !xyz.HasZoom() {
+		t.Error("all Has* should be true")
+	}
+	if xyz.Page() != page {
+		t.Error("Page resolution failed")
+	}
+}
+
+func TestParseDestinationArray_XYZWithNulls(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	arr := pdfArray{pdfRef{Num: page.pageObj().Num}, pdfName("/XYZ"),
+		pdfNull{}, 800.0, pdfNull{}}
+	d := parseDestinationArray(doc, arr).(*DestinationXYZ)
+	if d.HasLeft() || !d.HasTop() || d.HasZoom() {
+		t.Errorf("Has*: L=%v T=%v Z=%v", d.HasLeft(), d.HasTop(), d.HasZoom())
+	}
+}
+
+func TestParseDestinationArray_Fit(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	arr := pdfArray{pdfRef{Num: page.pageObj().Num}, pdfName("/Fit")}
+	d := parseDestinationArray(doc, arr)
+	if _, ok := d.(*DestinationFit); !ok {
+		t.Errorf("type = %T", d)
+	}
+}
+
+func TestParseDestinationArray_FitR(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	arr := pdfArray{pdfRef{Num: page.pageObj().Num}, pdfName("/FitR"),
+		10.0, 20.0, 100.0, 200.0}
+	d := parseDestinationArray(doc, arr).(*DestinationFitR)
+	if d.Left() != 10 || d.Bottom() != 20 || d.Right() != 100 || d.Top() != 200 {
+		t.Errorf("FitR coords: %v %v %v %v", d.Left(), d.Bottom(), d.Right(), d.Top())
+	}
+}
+
+func TestParseDestinationArray_UnknownFitName(t *testing.T) {
+	doc := NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	arr := pdfArray{pdfRef{Num: page.pageObj().Num}, pdfName("/UnknownFit")}
+	if d := parseDestinationArray(doc, arr); d != nil {
+		t.Errorf("unknown fit name should return nil, got %T", d)
+	}
+}
+
+func TestParseDestinationArray_BadPageRef(t *testing.T) {
+	doc := NewDocument(595, 842)
+	arr := pdfArray{pdfRef{Num: 99999}, pdfName("/Fit")}
+	if d := parseDestinationArray(doc, arr); d != nil {
+		t.Errorf("bad page ref should return nil, got %T", d)
+	}
+}

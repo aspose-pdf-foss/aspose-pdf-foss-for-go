@@ -11,6 +11,7 @@ import (
 type Document struct {
 	objects      map[int]*pdfObject // all PDF objects by ID
 	pages        []*pdfObject       // ordered /Page objects
+	pageCache    []*Page            // cached live views by index, lazy-allocated
 	catalog      pdfDict            // /Catalog dict
 	info         pdfDict            // /Info dict; nil = no metadata
 	encrypt      *encryptConfig     // nil = no encryption
@@ -194,7 +195,8 @@ func (d *Document) PageCount() int {
 func (d *Document) Pages() []*Page {
 	pages := make([]*Page, len(d.pages))
 	for i := range d.pages {
-		pages[i] = &Page{doc: d, index: i}
+		p, _ := d.Page(i + 1) // uses cache
+		pages[i] = p
 	}
 	return pages
 }
@@ -204,7 +206,15 @@ func (d *Document) Page(n int) (*Page, error) {
 	if n < 1 || n > len(d.pages) {
 		return nil, fmt.Errorf("page number %d out of range (1..%d)", n, len(d.pages))
 	}
-	return &Page{doc: d, index: n - 1}, nil
+	index := n - 1
+	// Lazily allocate and populate the page cache.
+	if d.pageCache == nil {
+		d.pageCache = make([]*Page, len(d.pages))
+	}
+	if d.pageCache[index] == nil {
+		d.pageCache[index] = &Page{doc: d, index: index}
+	}
+	return d.pageCache[index], nil
 }
 
 // Append adds all pages from others to this document, merging their objects.
