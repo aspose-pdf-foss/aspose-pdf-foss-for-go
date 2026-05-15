@@ -54,6 +54,54 @@ func (o *OutlineItemCollection) Parent() *OutlineItemCollection { return o.paren
 // Task 5 adds the rest of the collection API).
 func (o *OutlineItemCollection) Count() int { return len(o.children) }
 
+// Title returns the bookmark text.
+func (o *OutlineItemCollection) Title() string {
+	return o.title
+}
+
+// SetTitle replaces the bookmark text.
+func (o *OutlineItemCollection) SetTitle(s string) {
+	o.title = s
+}
+
+// Bold corresponds to /F bit 2 in the outline item dict. Default false.
+func (o *OutlineItemCollection) Bold() bool {
+	return o.bold
+}
+
+func (o *OutlineItemCollection) SetBold(b bool) {
+	o.bold = b
+}
+
+// Italic corresponds to /F bit 1. Default false.
+func (o *OutlineItemCollection) Italic() bool {
+	return o.italic
+}
+
+func (o *OutlineItemCollection) SetItalic(b bool) {
+	o.italic = b
+}
+
+// Color returns the RGB label color, or nil if /C is absent (default
+// black). SetColor(nil) clears /C.
+func (o *OutlineItemCollection) Color() *Color {
+	return o.color
+}
+
+func (o *OutlineItemCollection) SetColor(c *Color) {
+	o.color = c
+}
+
+// IsExpanded controls the viewer's initial expand/collapse state.
+// Encoded via the sign of /Count. Default true.
+func (o *OutlineItemCollection) IsExpanded() bool {
+	return o.isExpanded
+}
+
+func (o *OutlineItemCollection) SetIsExpanded(b bool) {
+	o.isExpanded = b
+}
+
 // Outlines returns the document's root outline collection. Always
 // non-nil — an empty collection is returned for documents without
 // outline content. Mirrors Aspose.PDF for .NET's Document.Outlines.
