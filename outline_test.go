@@ -107,3 +107,48 @@ func TestOutlines_IsExpandedDefaultsTrue(t *testing.T) {
 		t.Error("after SetIsExpanded(false), should be false")
 	}
 }
+
+func TestOutlines_DestinationGetSet(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	oic := pdf.NewOutlineItemCollection(doc)
+	if oic.Destination() != nil {
+		t.Error("default Destination should be nil")
+	}
+	d := pdf.NewDestinationXYZ(page, 100, 800, 1)
+	oic.SetDestination(d)
+	if oic.Destination() != d {
+		t.Error("Destination should round-trip via pointer identity")
+	}
+	oic.SetDestination(nil)
+	if oic.Destination() != nil {
+		t.Error("SetDestination(nil) should clear")
+	}
+}
+
+func TestOutlines_ActionGetSet(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	oic := pdf.NewOutlineItemCollection(doc)
+	if oic.Action() != nil {
+		t.Error("default Action should be nil")
+	}
+	a := pdf.NewGoToURIAction("https://example.com")
+	oic.SetAction(a)
+	if oic.Action() != a {
+		t.Error("Action should round-trip via pointer identity")
+	}
+}
+
+func TestOutlines_DestinationAndActionCoexist(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	oic := pdf.NewOutlineItemCollection(doc)
+	oic.SetDestination(pdf.NewDestinationFit(page))
+	oic.SetAction(pdf.NewGoToURIAction("https://example.com"))
+	if oic.Destination() == nil {
+		t.Error("Destination should remain after SetAction")
+	}
+	if oic.Action() == nil {
+		t.Error("Action should remain after SetDestination")
+	}
+}

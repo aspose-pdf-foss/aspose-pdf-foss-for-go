@@ -102,6 +102,29 @@ func (o *OutlineItemCollection) SetIsExpanded(b bool) {
 	o.isExpanded = b
 }
 
+// Action returns the action attached via /A. Reuses the Action
+// interface defined for annotations.
+func (o *OutlineItemCollection) Action() Action {
+	return o.action
+}
+
+// SetAction sets the /A action. Pass nil to clear.
+func (o *OutlineItemCollection) SetAction(a Action) {
+	o.action = a
+}
+
+// Destination returns the explicit view destination via /Dest, or nil
+// if absent. If both Destination and Action are set, /Dest takes
+// priority per ISO 32000-1 §12.3.3.
+func (o *OutlineItemCollection) Destination() Destination {
+	return o.destination
+}
+
+// SetDestination sets the /Dest entry. Pass nil to clear.
+func (o *OutlineItemCollection) SetDestination(d Destination) {
+	o.destination = d
+}
+
 // Outlines returns the document's root outline collection. Always
 // non-nil — an empty collection is returned for documents without
 // outline content. Mirrors Aspose.PDF for .NET's Document.Outlines.
