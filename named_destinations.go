@@ -1,5 +1,10 @@
 package asposepdf
 
+import (
+	"fmt"
+	"sort"
+)
+
 // NamedDestination wraps a name reference into the document's
 // NamedDestinations collection. Implements Destination so it can be
 // used wherever an explicit destination is accepted (outline entries,
@@ -53,15 +58,89 @@ func (n *NamedDestination) Resolve() Destination {
 	return n.doc.NamedDestinations().Get(n.name)
 }
 
-// --- Task 1 stubs — replaced by Task 2's full implementation. ---
-
-// NamedDestinations stub — Task 2 fills in the full collection API.
+// NamedDestinations is a name-to-destination map per ISO 32000-1 §12.3.2.3.
+// Backed at PDF level by the modern /Catalog/Names/Dests name tree
+// (PDF 1.2+); on read it also absorbs legacy /Catalog/Dests for
+// backward compatibility. On write, only /Names/Dests is emitted.
+//
+// Mirrors Aspose.PDF for .NET's NamedDestinations collection.
 type NamedDestinations struct {
-	doc *Document
+	doc     *Document
+	entries map[string]Destination
 }
 
-// Get stub — Task 2 replaces with the real map lookup.
-func (n *NamedDestinations) Get(name string) Destination { return nil }
+// Document returns the document this collection is bound to.
+func (n *NamedDestinations) Document() *Document { return n.doc }
+
+// Count returns the number of registered entries.
+func (n *NamedDestinations) Count() int { return len(n.entries) }
+
+// Has reports whether name is registered.
+func (n *NamedDestinations) Has(name string) bool {
+	_, ok := n.entries[name]
+	return ok
+}
+
+// Get returns the destination registered under name, or nil if absent.
+// Never returns a *NamedDestination (no recursive lookups).
+func (n *NamedDestinations) Get(name string) Destination {
+	return n.entries[name]
+}
+
+// Add registers dest under name. Errors on:
+//   - empty name
+//   - nil dest
+//   - dest is itself a *NamedDestination (would create a name→name loop)
+// If name was already present, the previous value is replaced silently.
+func (n *NamedDestinations) Add(name string, dest Destination) error {
+	if name == "" {
+		return fmt.Errorf("NamedDestinations.Add: empty name")
+	}
+	if dest == nil {
+		return fmt.Errorf("NamedDestinations.Add(%q): nil destination", name)
+	}
+	if _, ok := dest.(*NamedDestination); ok {
+		return fmt.Errorf("NamedDestinations.Add(%q): value cannot itself be a NamedDestination (would loop)", name)
+	}
+	if n.entries == nil {
+		n.entries = map[string]Destination{}
+	}
+	n.entries[name] = dest
+	return nil
+}
+
+// Remove deletes the entry; returns true if it existed.
+func (n *NamedDestinations) Remove(name string) bool {
+	if _, ok := n.entries[name]; !ok {
+		return false
+	}
+	delete(n.entries, name)
+	return true
+}
+
+// Names returns a snapshot slice of all registered names in lex order.
+func (n *NamedDestinations) Names() []string {
+	out := make([]string, 0, len(n.entries))
+	for k := range n.entries {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// All returns a snapshot map of name → destination.
+func (n *NamedDestinations) All() map[string]Destination {
+	out := make(map[string]Destination, len(n.entries))
+	for k, v := range n.entries {
+		out[k] = v
+	}
+	return out
+}
+
+// Clear removes every entry.
+func (n *NamedDestinations) Clear() {
+	n.entries = nil
+}
 
 // NamedDestinations returns the document's named-destination collection.
 // Always non-nil. Lazy-initialized on first call.
