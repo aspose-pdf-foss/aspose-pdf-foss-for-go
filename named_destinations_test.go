@@ -1,6 +1,8 @@
 package asposepdf_test
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
 	pdf "github.com/aspose/pdf-for-go"
@@ -142,5 +144,38 @@ func TestNamedDestinations_Clear(t *testing.T) {
 	nd.Clear()
 	if nd.Count() != 0 {
 		t.Error("Clear should empty the collection")
+	}
+}
+
+func TestNamedDestinations_WriterEmitsNamesDests(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	doc.NamedDestinations().Add("intro", pdf.NewDestinationFit(page))
+
+	var buf bytes.Buffer
+	if _, err := doc.WriteTo(&buf); err != nil {
+		t.Fatal(err)
+	}
+	s := buf.String()
+	if !strings.Contains(s, "/Names") {
+		t.Error("output missing /Catalog/Names entry")
+	}
+	if !strings.Contains(s, "/Dests") {
+		t.Error("output missing /Dests inside name tree")
+	}
+	if !strings.Contains(s, "/Limits") {
+		t.Error("output missing /Limits in tree root")
+	}
+	if !strings.Contains(s, "intro") {
+		t.Error("output missing the registered name")
+	}
+}
+
+func TestNamedDestinations_WriterSkipsEmptyCollection(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	if strings.Contains(buf.String(), "/Dests") {
+		t.Error("empty collection should not produce /Dests in output")
 	}
 }

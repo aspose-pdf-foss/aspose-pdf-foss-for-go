@@ -31,6 +31,13 @@ func buildDocumentPDF(d *Document) ([]byte, error) {
 		d.objects[obj.Num] = obj
 	}
 
+	// Build named-destination tree objects up-front so they're picked up by
+	// the contentIDs snapshot below and remapped along with everything else.
+	ndTreeRef, ndNamesDictRef, ndObjs := buildNamedDestTree(d)
+	for _, obj := range ndObjs {
+		d.objects[obj.Num] = obj
+	}
+
 	// Assign sequential output IDs to all content objects.
 	// Reserve IDs for structural objects built by the writer.
 	contentIDs := sortedObjectIDs(d.objects)
@@ -120,6 +127,33 @@ func buildDocumentPDF(d *Document) ([]byte, error) {
 	// auto-remap the pdfRef to the output ID.
 	if outlinesRef.Num != 0 {
 		catOut["/Outlines"] = outlinesRef
+	}
+	// /Names/Dests if collection non-empty. Merge with any existing /Names
+	// dict to preserve sibling subentries (JavaScript, EmbeddedFiles, etc.)
+	// without clobbering them. Strip old /Dests; the new tree replaces it.
+	if ndTreeRef.Num != 0 {
+		var namesDict pdfDict
+		if existing, ok := catOut["/Names"].(pdfRef); ok {
+			if obj, ok := d.objects[existing.Num]; ok {
+				if dict, ok := obj.Value.(pdfDict); ok {
+					namesDict = pdfDict{}
+					for k, v := range dict {
+						if k != "/Dests" {
+							namesDict[k] = v
+						}
+					}
+				}
+			}
+		}
+		if namesDict == nil {
+			namesDict = pdfDict{}
+		}
+		namesDict["/Dests"] = ndTreeRef
+		// Replace the synthesized /Names dict in ndObjs (index 1) with the merged one.
+		ndObjs[1] = &pdfObject{Num: ndNamesDictRef.Num, Value: namesDict}
+		// Re-register the updated /Names dict object.
+		d.objects[ndNamesDictRef.Num] = ndObjs[1]
+		catOut["/Names"] = ndNamesDictRef
 	}
 	var catalogEncFn func([]byte) ([]byte, error)
 	if encState != nil {
