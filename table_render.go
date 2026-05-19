@@ -38,8 +38,43 @@ func (p *Page) AddTable(t *Table, rect Rectangle) error {
 	if err != nil {
 		return fmt.Errorf("add table: %w", err)
 	}
-	_ = heights // used by cell rendering in subsequent tasks
-	// Cell rendering arrives in Tasks 6–8.
+
+	// Render cells. For each cell, compute its rect and interior, then call
+	// AddText (which handles font resolution, encoding, wrap, alignment, clipping).
+	y := rect.URY
+	for i, row := range t.rows {
+		if y-heights[i] < rect.LLY {
+			// Row doesn't fit — stop drawing further rows (clipping; Task 9
+			// adds a regression test for this).
+			break
+		}
+		x := rect.LLX
+		for col, cell := range row.cells {
+			colWidth := t.columnWidths[col]
+			cellLLX := x
+			cellURX := x + colWidth
+			cellURY := y
+			cellLLY := y - heights[i]
+
+			margin := effectiveCellMargin(t, cell)
+			style := effectiveCellStyle(t, cell)
+
+			interior := Rectangle{
+				LLX: cellLLX + margin.Left,
+				LLY: cellLLY + margin.Bottom,
+				URX: cellURX - margin.Right,
+				URY: cellURY - margin.Top,
+			}
+			if interior.URX > interior.LLX && interior.URY > interior.LLY && cell.text != "" {
+				if err := p.AddText(cell.text, style, interior); err != nil {
+					return fmt.Errorf("add table: row %d col %d text: %w", i, col, err)
+				}
+			}
+			x += colWidth
+		}
+		y -= heights[i]
+	}
+
 	return nil
 }
 

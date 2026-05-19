@@ -1,6 +1,8 @@
 package asposepdf_test
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
 	pdf "github.com/aspose/pdf-for-go"
@@ -240,5 +242,58 @@ func TestAddTable_NonPositiveColumnWidth(t *testing.T) {
 	err2 := page.AddTable(table2, pdf.Rectangle{LLX: 0, LLY: 0, URX: 200, URY: 100})
 	if err2 == nil {
 		t.Fatal("AddTable with negative column width should error")
+	}
+}
+
+func TestAddTable_CellTextAppears(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+
+	table := pdf.NewTable().
+		SetColumnWidths([]float64{100, 100, 100}).
+		SetDefaultCellStyle(pdf.TextStyle{Size: 10}).
+		SetDefaultCellMargin(pdf.MarginInfo{Top: 2, Right: 4, Bottom: 2, Left: 4})
+
+	table.AddRow().AddCells("alpha", "beta", "gamma")
+	table.AddRow().AddCells("delta", "epsilon", "zeta")
+
+	err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 350, URY: 750})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text, err := page.ExtractText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("ExtractText missing %q. Got: %q", want, text)
+		}
+	}
+}
+
+func TestAddTable_RoundTripText(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	table := pdf.NewTable().SetColumnWidths([]float64{100, 100})
+	table.AddRow().AddCells("hello", "world")
+
+	if err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 700}); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if _, err := doc.WriteTo(&buf); err != nil {
+		t.Fatal(err)
+	}
+	doc2, err := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page2, _ := doc2.Page(1)
+	text, _ := page2.ExtractText()
+	if !strings.Contains(text, "hello") || !strings.Contains(text, "world") {
+		t.Errorf("roundtrip lost cell text: %q", text)
 	}
 }
