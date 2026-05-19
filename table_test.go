@@ -966,3 +966,59 @@ func TestAddTable_RowSpanCrossingHeaderBodyErrors(t *testing.T) {
 		t.Error("expected error: rowspan from header into body")
 	}
 }
+
+func TestAddTable_RowSpanGroupSurvivesPageBreak(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+
+	table := pdf.NewTable().
+		SetColumnWidths([]float64{60, 60}).
+		SetDefaultCellStyle(pdf.TextStyle{Size: 12}).
+		SetDefaultCellMargin(pdf.MarginInfo{Top: 3, Right: 3, Bottom: 3, Left: 3})
+	// Rows 0-3: regular. Rows 4-5: rowspan group (cell at col 0 spans both).
+	for i := 0; i < 4; i++ {
+		table.AddRow().AddCells(fmt.Sprintf("a%d", i), fmt.Sprintf("b%d", i))
+	}
+	row4 := table.AddRow()
+	row4.AddCell("SPAN").SetRowSpan(2)
+	row4.AddCell("b4")
+	table.AddRow().AddCell("b5") // col 0 is covered by the rowspan above
+
+	// Tight rect: 4 rows fit on the first page, then rows 4+5 must move
+	// together as a group to the continuation page.
+	pagesAdded, err := page.AddTable(table, pdf.Rectangle{
+		LLX: 0, LLY: 670, URX: 200, URY: 760,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pagesAdded < 1 {
+		t.Fatal("expected overflow page")
+	}
+
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+
+	// "SPAN" + "b4" + "b5" must all appear on the SAME page (not split).
+	spanPage, b4Page, b5Page := -1, -1, -1
+	for p := 1; p <= doc2.PageCount(); p++ {
+		pg, _ := doc2.Page(p)
+		text, _ := pg.ExtractText()
+		if strings.Contains(text, "SPAN") {
+			spanPage = p
+		}
+		if strings.Contains(text, "b4") {
+			b4Page = p
+		}
+		if strings.Contains(text, "b5") {
+			b5Page = p
+		}
+	}
+	if spanPage == -1 || b4Page == -1 || b5Page == -1 {
+		t.Fatalf("missing piece: span=%d b4=%d b5=%d", spanPage, b4Page, b5Page)
+	}
+	if spanPage != b4Page || spanPage != b5Page {
+		t.Errorf("rowspan group split across pages: span=%d b4=%d b5=%d", spanPage, b4Page, b5Page)
+	}
+}
