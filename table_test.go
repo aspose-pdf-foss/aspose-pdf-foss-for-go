@@ -665,3 +665,32 @@ func TestCell_SetRowSpanChaining(t *testing.T) {
 		t.Errorf("RowSpan = %d, want 3", cell.RowSpan())
 	}
 }
+
+func TestTable_RepeatingRowsCountDefault(t *testing.T) {
+	table := pdf.NewTable()
+	if table.RepeatingRowsCount() != 0 {
+		t.Errorf("default RepeatingRowsCount = %d, want 0", table.RepeatingRowsCount())
+	}
+}
+
+func TestTable_SetRepeatingRowsCountChaining(t *testing.T) {
+	table := pdf.NewTable().SetRepeatingRowsCount(2)
+	if table.RepeatingRowsCount() != 2 {
+		t.Errorf("RepeatingRowsCount = %d, want 2", table.RepeatingRowsCount())
+	}
+}
+
+func TestTable_OverflowMarginsDefault(t *testing.T) {
+	top, bottom := pdf.NewTable().OverflowMargins()
+	if top != 50 || bottom != 50 {
+		t.Errorf("default OverflowMargins = (%g, %g), want (50, 50)", top, bottom)
+	}
+}
+
+func TestTable_SetOverflowMarginsChaining(t *testing.T) {
+	table := pdf.NewTable().SetOverflowMargins(70, 30)
+	top, bottom := table.OverflowMargins()
+	if top != 70 || bottom != 30 {
+		t.Errorf("OverflowMargins = (%g, %g), want (70, 30)", top, bottom)
+	}
+}

@@ -34,12 +34,16 @@ type MarginInfo struct {
 // Mirrors Aspose.PDF for .NET's Table class. After (*Page).AddTable renders
 // the table, the *Table is not held by the document.
 type Table struct {
-	columnWidths      []float64
-	border            BorderInfo
-	defaultCellBorder BorderInfo
-	defaultCellMargin MarginInfo
-	defaultCellStyle  TextStyle
-	rows              []*Row
+	columnWidths       []float64
+	border             BorderInfo
+	defaultCellBorder  BorderInfo
+	defaultCellMargin  MarginInfo
+	defaultCellStyle   TextStyle
+	rows               []*Row
+	repeatingRowsCount int
+	overflowTop        float64 // 0 = use default 50
+	overflowBottom     float64 // 0 = use default 50
+	overflowSet        bool    // true once SetOverflowMargins has been called
 }
 
 // Row is a single row within a Table.
@@ -202,4 +206,39 @@ func (c *Cell) RowSpan() int {
 		return 1
 	}
 	return c.rowSpan
+}
+
+// SetRepeatingRowsCount marks the first n rows as headers that repeat at the
+// top of every continuation page. Default 0 (no repeat).
+//
+// Mirrors Aspose.PDF for .NET's Table.RepeatingRowsCount property.
+func (t *Table) SetRepeatingRowsCount(n int) *Table {
+	t.repeatingRowsCount = n
+	return t
+}
+
+// RepeatingRowsCount returns the number of header rows that repeat on each
+// continuation page (default 0).
+func (t *Table) RepeatingRowsCount() int { return t.repeatingRowsCount }
+
+// SetOverflowMargins sets the top/bottom margins (in points) used to compute
+// the continuation-page bounding rectangle when the table overflows the
+// original rect. Defaults: 50pt on each side.
+//
+// The continuation rect uses the same LLX/URX as the original rect; the Y
+// range becomes [bottom, pageHeight - top].
+func (t *Table) SetOverflowMargins(top, bottom float64) *Table {
+	t.overflowTop = top
+	t.overflowBottom = bottom
+	t.overflowSet = true
+	return t
+}
+
+// OverflowMargins returns the configured overflow margins (defaults 50/50 if
+// SetOverflowMargins has not been called).
+func (t *Table) OverflowMargins() (top, bottom float64) {
+	if !t.overflowSet {
+		return 50, 50
+	}
+	return t.overflowTop, t.overflowBottom
 }
