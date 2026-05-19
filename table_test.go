@@ -475,3 +475,30 @@ func TestAddTable_OuterBorderClampedToDrawnRows(t *testing.T) {
 		t.Error("outer border bottom at rect.LLY=0; expected at drawn-rows boundary")
 	}
 }
+
+func TestAddTable_RowsBeyondRectAreClipped(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+
+	// 3 rows, each ~22pt with default 12pt font + default margins. Rect is
+	// only 30pt tall, so only the first row fits.
+	table := pdf.NewTable().
+		SetColumnWidths([]float64{100}).
+		SetDefaultCellStyle(pdf.TextStyle{Size: 12}).
+		SetDefaultCellMargin(pdf.MarginInfo{Top: 4, Right: 4, Bottom: 4, Left: 4})
+	table.AddRow().AddCell("rowOne")
+	table.AddRow().AddCell("rowTwo")
+	table.AddRow().AddCell("rowThree")
+
+	if err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 700, URX: 200, URY: 730}); err != nil {
+		t.Fatal(err)
+	}
+
+	text, _ := page.ExtractText()
+	if !strings.Contains(text, "rowOne") {
+		t.Error("rowOne should have been drawn")
+	}
+	if strings.Contains(text, "rowThree") {
+		t.Error("rowThree should have been clipped (rect too short)")
+	}
+}
