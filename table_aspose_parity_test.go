@@ -30,7 +30,7 @@ func TestAsposeParity_TableBasic(t *testing.T) {
 	row.AddCell("Header B")
 	row.AddCell("Header C")
 
-	if err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 450, URY: 750}); err != nil {
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 450, URY: 750}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -52,7 +52,7 @@ func TestAsposeParity_CellOverrides(t *testing.T) {
 	cell.SetVAlign(pdf.VAlignMiddle)
 	cell.SetMargin(pdf.MarginInfo{Top: 5, Right: 5, Bottom: 5, Left: 5})
 
-	if err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 700}); err != nil {
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 700}); err != nil {
 		t.Fatal(err)
 	}
 }

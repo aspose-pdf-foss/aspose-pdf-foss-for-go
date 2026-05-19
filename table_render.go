@@ -5,41 +5,47 @@ import (
 	"strings"
 )
 
-// AddTable renders the table inside the given rectangle. Per the package
-// design, cell content is drawn using each cell's TextStyle override (or the
-// table-level DefaultCellStyle), with per-cell padding (margin) applied.
-// The table is clipped to the bounding rectangle; rows that don't fit are
-// not drawn.
+// AddTable renders the table inside the given rectangle.
 //
-// Mirrors Aspose.PDF for .NET's flow-layout Table rendering, but uses
-// explicit Rectangle positioning (consistent with AddText / AddImage).
-func (p *Page) AddTable(t *Table, rect Rectangle) error {
+// Returns the number of pages automatically appended to the document (0 when
+// the table fits in rect). When the table doesn't fit and overflow is needed,
+// new pages are appended with dimensions matching the receiver page; the
+// continuation rectangle is computed from t.OverflowMargins().
+//
+// (Overflow logic arrives in Phase 2 Task 9 — this task only changes the
+// signature; the function still always returns 0 for pagesAdded.)
+//
+// Errors before any drawing on validation failures: nil table, bad rect,
+// non-positive column widths, mismatched cell counts (span-aware), merge
+// overlaps, rowspan crossing the header/body boundary, or a spanning group
+// too tall to fit any page.
+func (p *Page) AddTable(t *Table, rect Rectangle) (int, error) {
 	if t == nil {
-		return fmt.Errorf("add table: nil table")
+		return 0, fmt.Errorf("add table: nil table")
 	}
 	if err := rect.validate(); err != nil {
-		return fmt.Errorf("add table: %w", err)
+		return 0, fmt.Errorf("add table: %w", err)
 	}
 	if len(t.columnWidths) == 0 {
 		// Empty table — nothing to draw.
-		return nil
+		return 0, nil
 	}
 	for i, w := range t.columnWidths {
 		if w <= 0 {
-			return fmt.Errorf("add table: column %d has non-positive width %g", i, w)
+			return 0, fmt.Errorf("add table: column %d has non-positive width %g", i, w)
 		}
 	}
 	for i, row := range t.rows {
 		if len(row.cells) != len(t.columnWidths) {
-			return fmt.Errorf("add table: row %d has %d cells, want %d", i, len(row.cells), len(t.columnWidths))
+			return 0, fmt.Errorf("add table: row %d has %d cells, want %d", i, len(row.cells), len(t.columnWidths))
 		}
 	}
 	if len(t.rows) == 0 {
-		return nil
+		return 0, nil
 	}
 	heights, err := computeRowHeights(t)
 	if err != nil {
-		return fmt.Errorf("add table: %w", err)
+		return 0, fmt.Errorf("add table: %w", err)
 	}
 
 	// Render cells. For each cell, compute its rect and interior, then call
@@ -75,14 +81,14 @@ func (p *Page) AddTable(t *Table, rect Rectangle) error {
 				if err := p.appendToContentStream([]byte(
 					drawCellBackground(cellLLX, cellLLY, cellURX, cellURY, cell.background),
 				)); err != nil {
-					return fmt.Errorf("add table: row %d col %d background: %w", i, col, err)
+					return 0, fmt.Errorf("add table: row %d col %d background: %w", i, col, err)
 				}
 			}
 
 			// 2. Text (existing AddText call).
 			if interior.URX > interior.LLX && interior.URY > interior.LLY && cell.text != "" {
 				if err := p.AddText(cell.text, style, interior); err != nil {
-					return fmt.Errorf("add table: row %d col %d text: %w", i, col, err)
+					return 0, fmt.Errorf("add table: row %d col %d text: %w", i, col, err)
 				}
 			}
 
@@ -90,7 +96,7 @@ func (p *Page) AddTable(t *Table, rect Rectangle) error {
 			border := effectiveCellBorder(t, cell)
 			if ops := drawBorderSides(cellLLX, cellLLY, cellURX, cellURY, border); ops != "" {
 				if err := p.appendToContentStream([]byte(ops)); err != nil {
-					return fmt.Errorf("add table: row %d col %d border: %w", i, col, err)
+					return 0, fmt.Errorf("add table: row %d col %d border: %w", i, col, err)
 				}
 			}
 			x += colWidth
@@ -113,12 +119,12 @@ func (p *Page) AddTable(t *Table, rect Rectangle) error {
 			t.border,
 		); ops != "" {
 			if err := p.appendToContentStream([]byte(ops)); err != nil {
-				return fmt.Errorf("add table: outer border: %w", err)
+				return 0, fmt.Errorf("add table: outer border: %w", err)
 			}
 		}
 	}
 
-	return nil
+	return 0, nil
 }
 
 // computeRowHeights returns the drawn height of each row in t.

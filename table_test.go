@@ -212,7 +212,7 @@ func TestCell_DefaultsAreNil(t *testing.T) {
 func TestAddTable_NilTable(t *testing.T) {
 	doc := pdf.NewDocument(595, 842)
 	page, _ := doc.Page(1)
-	err := page.AddTable(nil, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100})
+	_, err := page.AddTable(nil, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100})
 	if err == nil {
 		t.Error("AddTable(nil) should error")
 	}
@@ -222,7 +222,7 @@ func TestAddTable_EmptyTable(t *testing.T) {
 	doc := pdf.NewDocument(595, 842)
 	page, _ := doc.Page(1)
 	table := pdf.NewTable() // no columns, no rows
-	err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100})
+	_, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100})
 	if err != nil {
 		t.Errorf("AddTable(empty) = %v, want nil (no-op)", err)
 	}
@@ -232,7 +232,7 @@ func TestAddTable_NoRows(t *testing.T) {
 	doc := pdf.NewDocument(595, 842)
 	page, _ := doc.Page(1)
 	table := pdf.NewTable().SetColumnWidths([]float64{50, 50})
-	err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100})
+	_, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100})
 	if err != nil {
 		t.Errorf("AddTable(no-rows) = %v, want nil", err)
 	}
@@ -244,7 +244,7 @@ func TestAddTable_BadRect(t *testing.T) {
 	table := pdf.NewTable().SetColumnWidths([]float64{50})
 	table.AddRow().AddCell("x")
 	// LLX >= URX
-	err := page.AddTable(table, pdf.Rectangle{LLX: 100, LLY: 0, URX: 0, URY: 100})
+	_, err := page.AddTable(table, pdf.Rectangle{LLX: 100, LLY: 0, URX: 0, URY: 100})
 	if err == nil {
 		t.Error("AddTable with bad rect should error")
 	}
@@ -255,7 +255,7 @@ func TestAddTable_MismatchedCellCount(t *testing.T) {
 	page, _ := doc.Page(1)
 	table := pdf.NewTable().SetColumnWidths([]float64{50, 50, 50}) // 3 cols
 	table.AddRow().AddCells("a", "b")                              // 2 cells
-	err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 200, URY: 100})
+	_, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 200, URY: 100})
 	if err == nil {
 		t.Fatal("AddTable with mismatched cell count should error")
 	}
@@ -266,14 +266,14 @@ func TestAddTable_NonPositiveColumnWidth(t *testing.T) {
 	page, _ := doc.Page(1)
 	table := pdf.NewTable().SetColumnWidths([]float64{50, 0, 50})
 	table.AddRow().AddCells("a", "b", "c")
-	err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 200, URY: 100})
+	_, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 200, URY: 100})
 	if err == nil {
 		t.Fatal("AddTable with zero column width should error")
 	}
 
 	table2 := pdf.NewTable().SetColumnWidths([]float64{50, -1, 50})
 	table2.AddRow().AddCells("a", "b", "c")
-	err2 := page.AddTable(table2, pdf.Rectangle{LLX: 0, LLY: 0, URX: 200, URY: 100})
+	_, err2 := page.AddTable(table2, pdf.Rectangle{LLX: 0, LLY: 0, URX: 200, URY: 100})
 	if err2 == nil {
 		t.Fatal("AddTable with negative column width should error")
 	}
@@ -291,7 +291,7 @@ func TestAddTable_CellTextAppears(t *testing.T) {
 	table.AddRow().AddCells("alpha", "beta", "gamma")
 	table.AddRow().AddCells("delta", "epsilon", "zeta")
 
-	err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 350, URY: 750})
+	_, err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 350, URY: 750})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +313,7 @@ func TestAddTable_RoundTripText(t *testing.T) {
 	table := pdf.NewTable().SetColumnWidths([]float64{100, 100})
 	table.AddRow().AddCells("hello", "world")
 
-	if err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 700}); err != nil {
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 700}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -339,7 +339,7 @@ func TestAddTable_BackgroundFillEmitted(t *testing.T) {
 	cell := table.AddRow().AddCell("x")
 	cell.SetBackground(&pdf.Color{R: 1, G: 0, B: 0, A: 1})
 
-	if err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100}); err != nil {
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -357,7 +357,7 @@ func TestAddTable_BorderSidesMask(t *testing.T) {
 	table.AddRow().AddCell("x").
 		SetBorder(pdf.BorderInfo{Sides: pdf.BorderSideTop | pdf.BorderSideBottom, Width: 1})
 
-	if err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100}); err != nil {
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -376,7 +376,7 @@ func TestAddTable_ZeroWidthBorderNotDrawn(t *testing.T) {
 	table.AddRow().AddCell("x").
 		SetBorder(pdf.BorderInfo{Sides: pdf.BorderSideAll, Width: 0})
 
-	if err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100}); err != nil {
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -396,7 +396,7 @@ func TestAddTable_CellOverridesDefaultBorder(t *testing.T) {
 	row.AddCell("a") // inherits default
 	row.AddCell("b").SetBorder(pdf.BorderInfo{Sides: pdf.BorderSideAll, Width: 3})
 
-	if err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100}); err != nil {
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -417,7 +417,7 @@ func TestAddTable_OuterBorderDrawn(t *testing.T) {
 		SetBorder(pdf.BorderInfo{Sides: pdf.BorderSideAll, Width: 2})
 	table.AddRow().AddCells("a", "b")
 
-	if err := page.AddTable(table, pdf.Rectangle{LLX: 100, LLY: 100, URX: 200, URY: 150}); err != nil {
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 100, LLY: 100, URX: 200, URY: 150}); err != nil {
 		t.Fatal(err)
 	}
 	s := renderedContent(t, doc)
@@ -437,7 +437,7 @@ func TestAddTable_OuterBorderNoneNoStrokes(t *testing.T) {
 	table := pdf.NewTable().SetColumnWidths([]float64{50})
 	table.AddRow().AddCell("x")
 
-	if err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100}); err != nil {
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100}); err != nil {
 		t.Fatal(err)
 	}
 	s := renderedContent(t, doc)
@@ -460,7 +460,7 @@ func TestAddTable_OuterBorderClampedToDrawnRows(t *testing.T) {
 	table.AddRow().AddCell("two")
 	table.AddRow().AddCell("three")
 
-	if err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 25}); err != nil {
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 25}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -490,7 +490,7 @@ func TestAddTable_RowsBeyondRectAreClipped(t *testing.T) {
 	table.AddRow().AddCell("rowTwo")
 	table.AddRow().AddCell("rowThree")
 
-	if err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 700, URX: 200, URY: 730}); err != nil {
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 700, URX: 200, URY: 730}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -509,7 +509,7 @@ func TestAddTable_AES128Roundtrip(t *testing.T) {
 	table := pdf.NewTable().SetColumnWidths([]float64{100, 100})
 	table.AddRow().AddCells("secret", "data")
 
-	if err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 700}); err != nil {
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 700}); err != nil {
 		t.Fatal(err)
 	}
 	doc.SetEncryption(pdf.EncryptionOptions{
@@ -550,7 +550,7 @@ func TestAddTable_WithEmbeddedTTF(t *testing.T) {
 	// Unicode payload — exercises CID/Identity-H path that only embedded fonts handle.
 	table.AddRow().AddCells("Cyrillic Привет", "Greek Γειά")
 
-	if err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 290, URY: 700}); err != nil {
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 290, URY: 700}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -583,7 +583,7 @@ func TestAddTable_HAlignCenter(t *testing.T) {
 		SetDefaultCellMargin(pdf.MarginInfo{Top: 2, Right: 2, Bottom: 2, Left: 2})
 	table.AddRow().AddCell("X").SetHAlign(pdf.HAlignCenter)
 
-	if err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 600, URX: 200, URY: 700}); err != nil {
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 600, URX: 200, URY: 700}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -614,7 +614,7 @@ func TestAddTable_CellStyleOverridesDefault(t *testing.T) {
 	row.AddCell("default")
 	row.AddCell("big").SetTextStyle(pdf.TextStyle{Size: 18})
 
-	if err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 600, URX: 200, URY: 700}); err != nil {
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 600, URX: 200, URY: 700}); err != nil {
 		t.Fatal(err)
 	}
 
