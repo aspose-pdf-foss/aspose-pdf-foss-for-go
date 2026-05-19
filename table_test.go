@@ -694,3 +694,81 @@ func TestTable_SetOverflowMarginsChaining(t *testing.T) {
 		t.Errorf("OverflowMargins = (%g, %g), want (70, 30)", top, bottom)
 	}
 }
+
+func TestAddTable_ColSpanRendersWiderCell(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	table := pdf.NewTable().SetColumnWidths([]float64{100, 100, 100})
+	row := table.AddRow()
+	row.AddCell("wide cell").SetColSpan(3) // spans all 3 columns
+
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 300, URY: 100}); err != nil {
+		t.Fatal(err)
+	}
+
+	layout, err := page.ExtractTextWithLayout()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(layout) == 0 || len(layout[0].Fragments) == 0 {
+		t.Fatal("no fragments extracted")
+	}
+	// For left-aligned default, X is at LLX + left margin. We just verify
+	// the colspan cell renders without error.
+	found := false
+	for _, line := range layout {
+		for _, f := range line.Fragments {
+			if strings.Contains(f.Text, "wide cell") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("colspan cell text not found")
+	}
+}
+
+func TestAddTable_RowSpanRendersTallerCell(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	table := pdf.NewTable().
+		SetColumnWidths([]float64{50, 50}).
+		SetDefaultCellStyle(pdf.TextStyle{Size: 12}).
+		SetDefaultCellMargin(pdf.MarginInfo{Top: 2, Right: 2, Bottom: 2, Left: 2})
+	row0 := table.AddRow()
+	row0.AddCell("T").SetRowSpan(2) // spans rows 0 and 1
+	row0.AddCell("a")
+	table.AddRow().AddCell("b") // col 0 is covered
+
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100}); err != nil {
+		t.Fatal(err)
+	}
+
+	text, _ := page.ExtractText()
+	for _, want := range []string{"T", "a", "b"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q in output: %q", want, text)
+		}
+	}
+}
+
+func TestAddTable_RowSpanColSpanCombined(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	table := pdf.NewTable().SetColumnWidths([]float64{50, 50, 50})
+	row0 := table.AddRow()
+	row0.AddCell("2x2").SetColSpan(2).SetRowSpan(2) // covers rows 0..1, cols 0..1
+	row0.AddCell("c0")
+	table.AddRow().AddCell("c1") // col 2 only; cols 0..1 covered
+
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 150, URY: 100}); err != nil {
+		t.Fatal(err)
+	}
+
+	text, _ := page.ExtractText()
+	for _, want := range []string{"2x2", "c0", "c1"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q: %q", want, text)
+		}
+	}
+}

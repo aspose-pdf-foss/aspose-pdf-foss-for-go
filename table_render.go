@@ -42,41 +42,47 @@ func (p *Page) AddTable(t *Table, rect Rectangle) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	_ = covered // used by subsequent rendering tasks
 	heights, err := computeRowHeights(t)
 	if err != nil {
 		return 0, fmt.Errorf("add table: %w", err)
 	}
 
-	// Render cells. For each cell, compute its rect and interior, then call
-	// AddText (which handles font resolution, encoding, wrap, alignment, clipping).
+	// X offsets: xOffsets[c] = sum(columnWidths[0..c]); len(xOffsets) = numCols+1.
+	xOffsets := make([]float64, len(t.columnWidths)+1)
+	for i, w := range t.columnWidths {
+		xOffsets[i+1] = xOffsets[i] + w
+	}
+
 	y := rect.URY
 	drawnHeight := 0.0
 	for i, row := range t.rows {
 		if y-heights[i] < rect.LLY {
-			// Row doesn't fit — stop drawing further rows (clipping; Task 9
-			// adds a regression test for this).
+			// Phase 1-style clip: rows that don't fit are not drawn. Multi-page
+			// overflow arrives in Task 9.
 			break
 		}
-		x := rect.LLX
-		for col, cell := range row.cells {
-			colWidth := t.columnWidths[col]
-			cellLLX := x
-			cellURX := x + colWidth
+		col := 0
+		for _, cell := range row.cells {
+			// Skip positions covered by inherited rowspans.
+			for col < len(t.columnWidths) && covered[i][col] {
+				col++
+			}
+			cs := cell.ColSpan()
+			rs := cell.RowSpan()
+			cellLLX := rect.LLX + xOffsets[col]
+			cellURX := rect.LLX + xOffsets[col+cs]
 			cellURY := y
-			cellLLY := y - heights[i]
+			// Sum spanned row heights for the cell's bottom edge.
+			spanH := heights[i]
+			for r := 1; r < rs; r++ {
+				spanH += heights[i+r]
+			}
+			cellLLY := cellURY - spanH
 
 			margin := effectiveCellMargin(t, cell)
 			style := effectiveCellStyle(t, cell)
 
-			interior := Rectangle{
-				LLX: cellLLX + margin.Left,
-				LLY: cellLLY + margin.Bottom,
-				URX: cellURX - margin.Right,
-				URY: cellURY - margin.Top,
-			}
-
-			// 1. Background first (so text and borders go on top).
+			// 1. Background.
 			if cell.background != nil {
 				if err := p.appendToContentStream([]byte(
 					drawCellBackground(cellLLX, cellLLY, cellURX, cellURY, cell.background),
@@ -85,34 +91,36 @@ func (p *Page) AddTable(t *Table, rect Rectangle) (int, error) {
 				}
 			}
 
-			// 2. Text (existing AddText call).
+			// 2. Text.
+			interior := Rectangle{
+				LLX: cellLLX + margin.Left,
+				LLY: cellLLY + margin.Bottom,
+				URX: cellURX - margin.Right,
+				URY: cellURY - margin.Top,
+			}
 			if interior.URX > interior.LLX && interior.URY > interior.LLY && cell.text != "" {
 				if err := p.AddText(cell.text, style, interior); err != nil {
 					return 0, fmt.Errorf("add table: row %d col %d text: %w", i, col, err)
 				}
 			}
 
-			// 3. Cell border on top of text edges.
+			// 3. Border.
 			border := effectiveCellBorder(t, cell)
 			if ops := drawBorderSides(cellLLX, cellLLY, cellURX, cellURY, border); ops != "" {
 				if err := p.appendToContentStream([]byte(ops)); err != nil {
 					return 0, fmt.Errorf("add table: row %d col %d border: %w", i, col, err)
 				}
 			}
-			x += colWidth
+
+			col += cs
 		}
 		y -= heights[i]
 		drawnHeight += heights[i]
 	}
 
 	// Outer table border. Drawn last so it appears on top of cell-edge strokes.
-	// Height equals the sum of rendered rows (not the rect), so the border
-	// tightly wraps the visible content even when later rows were clipped.
 	if drawnHeight > 0 {
-		totalW := 0.0
-		for _, w := range t.columnWidths {
-			totalW += w
-		}
+		totalW := xOffsets[len(t.columnWidths)]
 		if ops := drawBorderSides(
 			rect.LLX, rect.URY-drawnHeight,
 			rect.LLX+totalW, rect.URY,
