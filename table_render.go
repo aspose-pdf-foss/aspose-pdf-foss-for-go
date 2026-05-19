@@ -97,6 +97,30 @@ func (p *Page) AddTable(t *Table, rect Rectangle) error {
 		y -= heights[i]
 	}
 
+	// Outer table border. Drawn last so it appears on top of cell-edge strokes.
+	totalH := 0.0
+	for _, h := range heights {
+		totalH += h
+	}
+	// If rows were clipped, clamp the outer border height to what was actually drawn.
+	drawnH := totalH
+	if drawnH > rect.URY-rect.LLY {
+		drawnH = rect.URY - rect.LLY
+	}
+	totalW := 0.0
+	for _, w := range t.columnWidths {
+		totalW += w
+	}
+	if ops := drawBorderSides(
+		rect.LLX, rect.URY-drawnH,
+		rect.LLX+totalW, rect.URY,
+		t.border,
+	); ops != "" {
+		if err := p.appendToContentStream([]byte(ops)); err != nil {
+			return fmt.Errorf("add table: outer border: %w", err)
+		}
+	}
+
 	return nil
 }
 

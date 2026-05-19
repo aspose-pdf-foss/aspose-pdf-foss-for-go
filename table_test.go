@@ -408,3 +408,40 @@ func TestAddTable_CellOverridesDefaultBorder(t *testing.T) {
 		t.Error("cell-override border width 3 missing")
 	}
 }
+
+func TestAddTable_OuterBorderDrawn(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	table := pdf.NewTable().
+		SetColumnWidths([]float64{50, 50}).
+		SetBorder(pdf.BorderInfo{Sides: pdf.BorderSideAll, Width: 2})
+	table.AddRow().AddCells("a", "b")
+
+	if err := page.AddTable(table, pdf.Rectangle{LLX: 100, LLY: 100, URX: 200, URY: 150}); err != nil {
+		t.Fatal(err)
+	}
+	s := renderedContent(t, doc)
+	if !strings.Contains(s, "2 w") {
+		t.Error("outer border width 2 missing")
+	}
+	// Outer border = 4 strokes minimum.
+	if strings.Count(s, " S\n") < 4 {
+		t.Errorf("strokes = %d, want >= 4 (outer border)", strings.Count(s, " S\n"))
+	}
+}
+
+func TestAddTable_OuterBorderNoneNoStrokes(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	// No table border, no cell borders → no strokes at all.
+	table := pdf.NewTable().SetColumnWidths([]float64{50})
+	table.AddRow().AddCell("x")
+
+	if err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100}); err != nil {
+		t.Fatal(err)
+	}
+	s := renderedContent(t, doc)
+	if strings.Contains(s, " S\n") {
+		t.Error("no border configured but stroke present")
+	}
+}
