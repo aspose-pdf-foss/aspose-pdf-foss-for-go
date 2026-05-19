@@ -34,6 +34,119 @@ func (p *Page) AddTable(t *Table, rect Rectangle) error {
 	if len(t.rows) == 0 {
 		return nil
 	}
-	// Row-height pass + cell rendering arrive in Tasks 5–8.
+	heights, err := computeRowHeights(t)
+	if err != nil {
+		return fmt.Errorf("add table: %w", err)
+	}
+	_ = heights // used by cell rendering in subsequent tasks
+	// Cell rendering arrives in Tasks 6–8.
 	return nil
+}
+
+// computeRowHeights returns the drawn height of each row in t.
+//
+// For rows with an explicit SetHeight > 0, the explicit value is returned.
+// For rows with auto-fit (height == 0), the height is the max of cell content
+// heights in the row, where each cell's content height is:
+//
+//	lines * (fontSize * lineSpacing) + margin.Top + margin.Bottom
+//
+// Lines come from measureText against the column's interior width
+// (column width - margin.Left - margin.Right).
+func computeRowHeights(t *Table) ([]float64, error) {
+	heights := make([]float64, len(t.rows))
+	for i, row := range t.rows {
+		if row.height > 0 {
+			heights[i] = row.height
+			continue
+		}
+		maxH := 0.0
+		for col, cell := range row.cells {
+			colWidth := t.columnWidths[col]
+			margin := effectiveCellMargin(t, cell)
+			style := effectiveCellStyle(t, cell)
+			interiorWidth := colWidth - margin.Left - margin.Right
+			if interiorWidth < 0 {
+				interiorWidth = 0
+			}
+			lines, lineHeight, err := measureText(cell.text, style, interiorWidth)
+			if err != nil {
+				return nil, fmt.Errorf("row %d col %d: %w", i, col, err)
+			}
+			cellH := float64(lines)*lineHeight + margin.Top + margin.Bottom
+			if cellH > maxH {
+				maxH = cellH
+			}
+		}
+		heights[i] = maxH
+	}
+	return heights, nil
+}
+
+// effectiveCellMargin returns the per-cell margin, falling back to the table
+// default if the cell has no override.
+func effectiveCellMargin(t *Table, c *Cell) MarginInfo {
+	if c.margin != nil {
+		return *c.margin
+	}
+	return t.defaultCellMargin
+}
+
+// effectiveCellStyle returns the resolved TextStyle for a cell, layering:
+// table.defaultCellStyle ← cell.style overlay ← cell H/V align overrides.
+func effectiveCellStyle(t *Table, c *Cell) TextStyle {
+	style := t.defaultCellStyle
+	if c.style != nil {
+		style = overlayTextStyle(style, *c.style)
+	}
+	if c.hAlignSet {
+		style.HAlign = c.hAlign
+	}
+	if c.vAlignSet {
+		style.VAlign = c.vAlign
+	}
+	return style
+}
+
+// overlayTextStyle returns base with every non-zero field of overlay applied
+// on top. Zero-value fields in overlay leave base unchanged.
+//
+// Field list mirrors the TextStyle declared in color.go (Font, Size, Color,
+// Background, HAlign, VAlign, LineSpacing, Underline, Strikethrough, Rotation, Behind).
+func overlayTextStyle(base, overlay TextStyle) TextStyle {
+	out := base
+	if overlay.Font != nil {
+		out.Font = overlay.Font
+	}
+	if overlay.Size != 0 {
+		out.Size = overlay.Size
+	}
+	if overlay.Color != nil {
+		out.Color = overlay.Color
+	}
+	if overlay.Background != nil {
+		out.Background = overlay.Background
+	}
+	if overlay.HAlign != 0 {
+		out.HAlign = overlay.HAlign
+	}
+	if overlay.VAlign != 0 {
+		out.VAlign = overlay.VAlign
+	}
+	if overlay.LineSpacing != 0 {
+		out.LineSpacing = overlay.LineSpacing
+	}
+	if overlay.Underline {
+		out.Underline = true
+	}
+	if overlay.Strikethrough {
+		out.Strikethrough = true
+	}
+	if overlay.Rotation != 0 {
+		out.Rotation = overlay.Rotation
+	}
+	if overlay.Behind {
+		out.Behind = true
+	}
+	return out
 }
