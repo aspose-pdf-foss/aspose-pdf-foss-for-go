@@ -772,3 +772,24 @@ func TestAddTable_RowSpanColSpanCombined(t *testing.T) {
 		}
 	}
 }
+
+func TestAddTable_RepeatingRowsCountValidation(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+
+	table := pdf.NewTable().SetColumnWidths([]float64{50})
+	table.AddRow().AddCell("only")
+	table.SetRepeatingRowsCount(5) // way more than the 1 row
+	_, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100})
+	if err == nil {
+		t.Error("expected error when RepeatingRowsCount exceeds RowCount")
+	}
+
+	table2 := pdf.NewTable().SetColumnWidths([]float64{50})
+	table2.AddRow().AddCell("only")
+	table2.SetRepeatingRowsCount(-1)
+	_, err = page.AddTable(table2, pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100})
+	if err == nil {
+		t.Error("expected error for negative RepeatingRowsCount")
+	}
+}

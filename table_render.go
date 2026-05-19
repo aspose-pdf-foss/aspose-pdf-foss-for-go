@@ -42,6 +42,13 @@ func (p *Page) AddTable(t *Table, rect Rectangle) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	if t.repeatingRowsCount < 0 {
+		return 0, fmt.Errorf("add table: repeating rows count %d is negative", t.repeatingRowsCount)
+	}
+	if t.repeatingRowsCount > len(t.rows) {
+		return 0, fmt.Errorf("add table: repeating rows count %d exceeds row count %d",
+			t.repeatingRowsCount, len(t.rows))
+	}
 	heights, err := computeRowHeights(t)
 	if err != nil {
 		return 0, fmt.Errorf("add table: %w", err)
@@ -53,83 +60,25 @@ func (p *Page) AddTable(t *Table, rect Rectangle) (int, error) {
 		xOffsets[i+1] = xOffsets[i] + w
 	}
 
+	// Single-page rendering (Phase 1-style clip — Task 9 replaces with multi-page).
 	y := rect.URY
 	drawnHeight := 0.0
-	for i, row := range t.rows {
+	i := 0
+	for i < len(t.rows) {
 		if y-heights[i] < rect.LLY {
-			// Phase 1-style clip: rows that don't fit are not drawn. Multi-page
-			// overflow arrives in Task 9.
 			break
 		}
-		col := 0
-		for _, cell := range row.cells {
-			// Skip positions covered by inherited rowspans.
-			for col < len(t.columnWidths) && covered[i][col] {
-				col++
-			}
-			cs := cell.ColSpan()
-			rs := cell.RowSpan()
-			cellLLX := rect.LLX + xOffsets[col]
-			cellURX := rect.LLX + xOffsets[col+cs]
-			cellURY := y
-			// Sum spanned row heights for the cell's bottom edge.
-			spanH := heights[i]
-			for r := 1; r < rs; r++ {
-				spanH += heights[i+r]
-			}
-			cellLLY := cellURY - spanH
-
-			margin := effectiveCellMargin(t, cell)
-			style := effectiveCellStyle(t, cell)
-
-			// 1. Background.
-			if cell.background != nil {
-				if err := p.appendToContentStream([]byte(
-					drawCellBackground(cellLLX, cellLLY, cellURX, cellURY, cell.background),
-				)); err != nil {
-					return 0, fmt.Errorf("add table: row %d col %d background: %w", i, col, err)
-				}
-			}
-
-			// 2. Text.
-			interior := Rectangle{
-				LLX: cellLLX + margin.Left,
-				LLY: cellLLY + margin.Bottom,
-				URX: cellURX - margin.Right,
-				URY: cellURY - margin.Top,
-			}
-			if interior.URX > interior.LLX && interior.URY > interior.LLY && cell.text != "" {
-				if err := p.AddText(cell.text, style, interior); err != nil {
-					return 0, fmt.Errorf("add table: row %d col %d text: %w", i, col, err)
-				}
-			}
-
-			// 3. Border.
-			border := effectiveCellBorder(t, cell)
-			if ops := drawBorderSides(cellLLX, cellLLY, cellURX, cellURY, border); ops != "" {
-				if err := p.appendToContentStream([]byte(ops)); err != nil {
-					return 0, fmt.Errorf("add table: row %d col %d border: %w", i, col, err)
-				}
-			}
-
-			col += cs
+		h, err := drawRowRange(p, t, i, i, rect, y, covered, xOffsets, heights)
+		if err != nil {
+			return 0, fmt.Errorf("add table: %w", err)
 		}
-		y -= heights[i]
-		drawnHeight += heights[i]
+		y -= h
+		drawnHeight += h
+		i++
 	}
 
-	// Outer table border. Drawn last so it appears on top of cell-edge strokes.
-	if drawnHeight > 0 {
-		totalW := xOffsets[len(t.columnWidths)]
-		if ops := drawBorderSides(
-			rect.LLX, rect.URY-drawnHeight,
-			rect.LLX+totalW, rect.URY,
-			t.border,
-		); ops != "" {
-			if err := p.appendToContentStream([]byte(ops)); err != nil {
-				return 0, fmt.Errorf("add table: outer border: %w", err)
-			}
-		}
+	if err := drawOuterBorder(p, t, rect, rect.URY, drawnHeight, xOffsets); err != nil {
+		return 0, fmt.Errorf("add table: outer border: %w", err)
 	}
 
 	return 0, nil
@@ -384,6 +333,91 @@ func effectiveCellStyle(t *Table, c *Cell) TextStyle {
 		style.VAlign = c.vAlign
 	}
 	return style
+}
+
+// drawRowRange renders rows [startRow..endRow] (inclusive) of t on targetPage,
+// using rect.LLX as the left origin and topY as the top edge of the first row.
+// Returns the total height of rows actually drawn.
+//
+// covered:  pre-computed coverage grid from validateAndCover.
+// xOffsets: pre-computed running-sum of columnWidths.
+// heights:  pre-computed row heights.
+func drawRowRange(
+	targetPage *Page, t *Table,
+	startRow, endRow int,
+	rect Rectangle, topY float64,
+	covered [][]bool, xOffsets, heights []float64,
+) (drawnHeight float64, err error) {
+	y := topY
+	for i := startRow; i <= endRow; i++ {
+		rowH := heights[i]
+		col := 0
+		for _, cell := range t.rows[i].cells {
+			for col < len(t.columnWidths) && covered[i][col] {
+				col++
+			}
+			cs := cell.ColSpan()
+			rs := cell.RowSpan()
+			cellLLX := rect.LLX + xOffsets[col]
+			cellURX := rect.LLX + xOffsets[col+cs]
+			cellURY := y
+			spanH := rowH
+			for r := 1; r < rs; r++ {
+				spanH += heights[i+r]
+			}
+			cellLLY := cellURY - spanH
+
+			margin := effectiveCellMargin(t, cell)
+			style := effectiveCellStyle(t, cell)
+
+			if cell.background != nil {
+				if err := targetPage.appendToContentStream([]byte(
+					drawCellBackground(cellLLX, cellLLY, cellURX, cellURY, cell.background),
+				)); err != nil {
+					return drawnHeight, fmt.Errorf("row %d col %d background: %w", i, col, err)
+				}
+			}
+			interior := Rectangle{
+				LLX: cellLLX + margin.Left,
+				LLY: cellLLY + margin.Bottom,
+				URX: cellURX - margin.Right,
+				URY: cellURY - margin.Top,
+			}
+			if interior.URX > interior.LLX && interior.URY > interior.LLY && cell.text != "" {
+				if err := targetPage.AddText(cell.text, style, interior); err != nil {
+					return drawnHeight, fmt.Errorf("row %d col %d text: %w", i, col, err)
+				}
+			}
+			border := effectiveCellBorder(t, cell)
+			if ops := drawBorderSides(cellLLX, cellLLY, cellURX, cellURY, border); ops != "" {
+				if err := targetPage.appendToContentStream([]byte(ops)); err != nil {
+					return drawnHeight, fmt.Errorf("row %d col %d border: %w", i, col, err)
+				}
+			}
+			col += cs
+		}
+		y -= rowH
+		drawnHeight += rowH
+	}
+	return drawnHeight, nil
+}
+
+// drawOuterBorder draws the table's outer border around the given drawn area
+// on targetPage. No-op if t.border.Sides is BorderSideNone or width is 0.
+func drawOuterBorder(targetPage *Page, t *Table, rect Rectangle, topY, drawnHeight float64, xOffsets []float64) error {
+	if drawnHeight <= 0 {
+		return nil
+	}
+	totalW := xOffsets[len(t.columnWidths)]
+	ops := drawBorderSides(
+		rect.LLX, topY-drawnHeight,
+		rect.LLX+totalW, topY,
+		t.border,
+	)
+	if ops == "" {
+		return nil
+	}
+	return targetPage.appendToContentStream([]byte(ops))
 }
 
 // overlayTextStyle returns base with every non-zero field of overlay applied
