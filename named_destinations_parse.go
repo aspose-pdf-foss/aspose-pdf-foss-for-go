@@ -91,7 +91,7 @@ func resolveNamedDest(doc *Document, name string) Destination {
 	if name == "" {
 		return nil
 	}
-	return &NamedDestination{doc: doc, name: name}
+	return NewNamedDestination(doc, name)
 }
 
 // parseNamedDestinations reads /Catalog/Names/Dests (modern name tree)
