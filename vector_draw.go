@@ -199,3 +199,54 @@ func (p *Page) DrawEllipse(center Point, rx, ry float64, style ShapeStyle) error
 	buf.WriteString("Q\n")
 	return p.appendToContentStream([]byte(buf.String()))
 }
+
+// DrawPolyline strokes an open polyline (first and last points are NOT
+// connected). No fill — even if one were specified, an open path has
+// ambiguous fill semantics. Errors if len(points) < 2.
+// No-op if style.Width <= 0.
+//
+// Mirrors Aspose.PDF for .NET's Drawing.Polyline.
+func (p *Page) DrawPolyline(points []Point, style LineStyle) error {
+	if len(points) < 2 {
+		return fmt.Errorf("draw polyline: need >= 2 points, got %d", len(points))
+	}
+	if style.Width <= 0 {
+		return nil
+	}
+	var buf strings.Builder
+	buf.WriteString("q\n")
+	buf.WriteString(formatLineStyle(style))
+	buf.WriteString(fmt.Sprintf("%s %s m\n", formatFloat(points[0].X), formatFloat(points[0].Y)))
+	for _, pt := range points[1:] {
+		buf.WriteString(fmt.Sprintf("%s %s l\n", formatFloat(pt.X), formatFloat(pt.Y)))
+	}
+	buf.WriteString("S\n")
+	buf.WriteString("Q\n")
+	return p.appendToContentStream([]byte(buf.String()))
+}
+
+// DrawPolygon strokes and/or fills a closed polygon (last point connects back
+// to the first via `h`). Errors if len(points) < 3. No-op if neither stroke
+// nor fill is configured.
+//
+// Mirrors Aspose.PDF for .NET's Drawing.Polygon.
+func (p *Page) DrawPolygon(points []Point, style ShapeStyle) error {
+	if len(points) < 3 {
+		return fmt.Errorf("draw polygon: need >= 3 points, got %d", len(points))
+	}
+	op := paintOp(style)
+	if op == "" {
+		return nil
+	}
+	var buf strings.Builder
+	buf.WriteString("q\n")
+	buf.WriteString(formatShapeStyle(style))
+	buf.WriteString(fmt.Sprintf("%s %s m\n", formatFloat(points[0].X), formatFloat(points[0].Y)))
+	for _, pt := range points[1:] {
+		buf.WriteString(fmt.Sprintf("%s %s l\n", formatFloat(pt.X), formatFloat(pt.Y)))
+	}
+	buf.WriteString(" h\n")
+	buf.WriteString(op + "\n")
+	buf.WriteString("Q\n")
+	return p.appendToContentStream([]byte(buf.String()))
+}

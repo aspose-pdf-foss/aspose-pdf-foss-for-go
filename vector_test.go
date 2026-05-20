@@ -241,3 +241,72 @@ func TestDrawEllipse_NegativeAxisErrors(t *testing.T) {
 		t.Error("negative ry should error")
 	}
 }
+
+func TestDrawPolyline_TwoPoints(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.DrawPolyline(
+		[]pdf.Point{{X: 0, Y: 0}, {X: 100, Y: 100}},
+		pdf.LineStyle{Width: 1},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := renderedContent(t, doc)
+	if !strings.Contains(s, "0 0 m") || !strings.Contains(s, "100 100 l") {
+		t.Errorf("missing polyline path ops: %s", s)
+	}
+	if !strings.Contains(s, "S\n") {
+		t.Error("polyline should stroke")
+	}
+	if strings.Contains(s, " h\n") || strings.Contains(s, "B\n") || strings.Contains(s, "f\n") {
+		t.Error("polyline should not close or fill")
+	}
+}
+
+func TestDrawPolyline_OnePointErrors(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.DrawPolyline([]pdf.Point{{X: 0, Y: 0}}, pdf.LineStyle{Width: 1})
+	if err == nil {
+		t.Error("polyline with one point should error")
+	}
+}
+
+func TestDrawPolygon_Triangle(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.DrawPolygon(
+		[]pdf.Point{{X: 0, Y: 0}, {X: 100, Y: 0}, {X: 50, Y: 87}},
+		pdf.ShapeStyle{
+			LineStyle: pdf.LineStyle{Width: 1},
+			FillColor: &pdf.Color{R: 0, G: 1, B: 0, A: 1},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := renderedContent(t, doc)
+	lineCount := strings.Count(s, " l\n")
+	if lineCount < 2 {
+		t.Errorf("triangle should have >= 2 line ops, got %d", lineCount)
+	}
+	if !strings.Contains(s, " h\n") {
+		t.Error("polygon should close (h)")
+	}
+	if !strings.Contains(s, "B\n") {
+		t.Error("polygon with stroke+fill should emit B")
+	}
+}
+
+func TestDrawPolygon_TwoPointsErrors(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.DrawPolygon(
+		[]pdf.Point{{X: 0, Y: 0}, {X: 100, Y: 100}},
+		pdf.ShapeStyle{LineStyle: pdf.LineStyle{Width: 1}},
+	)
+	if err == nil {
+		t.Error("polygon with two points should error")
+	}
+}
