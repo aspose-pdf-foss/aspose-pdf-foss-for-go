@@ -1267,3 +1267,57 @@ func TestAddTable_ImageFromStreamRoundTrip(t *testing.T) {
 		t.Errorf("after roundtrip got %d images, want 1", len(infos))
 	}
 }
+
+func TestAddTable_ImageWithColSpan(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	table := pdf.NewTable().SetColumnWidths([]float64{50, 50, 50, 50})
+	row := table.AddRow()
+	row.AddCell("").SetColSpan(2).SetImage("testdata/Koala.jpg") // image spans cols 0-1 (100pt wide)
+	row.AddCell("a")
+	row.AddCell("b")
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 500, URX: 250, URY: 750}); err != nil {
+		t.Fatal(err)
+	}
+	infos, _ := page.ImageInfos()
+	if len(infos) != 1 {
+		t.Errorf("colspan image: got %d images, want 1", len(infos))
+	}
+}
+
+func TestAddTable_ImageInRepeatingHeader(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	table := pdf.NewTable().
+		SetColumnWidths([]float64{100, 100}).
+		SetDefaultCellStyle(pdf.TextStyle{Size: 12}).
+		SetDefaultCellMargin(pdf.MarginInfo{Top: 3, Right: 3, Bottom: 3, Left: 3})
+	// Header row: image + text.
+	header := table.AddRow()
+	header.AddCell("").SetImage("testdata/Koala.jpg")
+	header.AddCell("HEADER")
+	// Body rows.
+	for i := 1; i <= 6; i++ {
+		table.AddRow().AddCells(fmt.Sprintf("a%d", i), fmt.Sprintf("b%d", i))
+	}
+	table.SetRepeatingRowsCount(1)
+
+	pagesAdded, err := page.AddTable(table, pdf.Rectangle{LLX: 0, LLY: 600, URX: 200, URY: 760})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pagesAdded < 1 {
+		t.Fatalf("expected overflow, pagesAdded = %d", pagesAdded)
+	}
+	// Verify each page has an image (repeated header).
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	doc2, _ := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	for p := 1; p <= doc2.PageCount(); p++ {
+		pg, _ := doc2.Page(p)
+		infos, _ := pg.ImageInfos()
+		if len(infos) < 1 {
+			t.Errorf("page %d has %d images; want >= 1 (repeated header image)", p, len(infos))
+		}
+	}
+}
