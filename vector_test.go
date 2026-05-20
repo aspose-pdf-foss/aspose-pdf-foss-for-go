@@ -452,3 +452,70 @@ func TestDrawLine_FullOpacityNoExtGState(t *testing.T) {
 		t.Error("alpha = 1 should not emit gs (no transparency needed)")
 	}
 }
+
+// Aspose .NET sample:
+//   Graph graph = new Graph(width, height);
+//   Line line = new Line(new float[] {x1, y1, x2, y2});
+//   line.GraphInfo.Color = Color.Red;
+//   line.GraphInfo.LineWidth = 2;
+//   line.GraphInfo.DashArray = new int[] {4, 2};
+//   graph.Shapes.Add(line);
+//   page.Paragraphs.Add(graph);
+//
+// In this library — methods directly on Page (no Graph container needed):
+func TestAsposeParity_DrawLineWithDash(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.DrawLine(
+		pdf.Point{X: 50, Y: 50}, pdf.Point{X: 200, Y: 200},
+		pdf.LineStyle{
+			Color:       &pdf.Color{R: 1, G: 0, B: 0, A: 1},
+			Width:       2,
+			DashPattern: []float64{4, 2},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Aspose .NET sample:
+//   Circle circle = new Circle(cx, cy, radius);
+//   circle.GraphInfo.Color = Color.Blue;
+//   circle.GraphInfo.FillColor = Color.LightBlue;
+//   circle.GraphInfo.LineWidth = 1;
+//   graph.Shapes.Add(circle);
+func TestAsposeParity_DrawCircleWithFill(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.DrawCircle(
+		pdf.Point{X: 200, Y: 200}, 50,
+		pdf.ShapeStyle{
+			LineStyle: pdf.LineStyle{
+				Color: &pdf.Color{R: 0, G: 0, B: 1, A: 1},
+				Width: 1,
+			},
+			FillColor: &pdf.Color{R: 0.7, G: 0.9, B: 1, A: 1},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Aspose .NET sample (arbitrary path via line segments + bezier):
+//   Curve curve = new Curve(new float[] {p0x, p0y, c1x, c1y, c2x, c2y, p3x, p3y});
+//   graph.Shapes.Add(curve);
+func TestAsposeParity_DrawPathArbitrary(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	path := pdf.NewPath().
+		MoveTo(50, 50).
+		CurveTo(100, 0, 200, 100, 250, 50).
+		LineTo(300, 100).
+		Close()
+	err := page.DrawPath(path, pdf.ShapeStyle{LineStyle: pdf.LineStyle{Width: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
