@@ -348,3 +348,59 @@ func TestDrawPath_BuilderChain(t *testing.T) {
 		}
 	}
 }
+
+func TestDrawRoundedRectangle_Basic(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.DrawRoundedRectangle(
+		pdf.Rectangle{LLX: 50, LLY: 50, URX: 200, URY: 150}, 10,
+		pdf.ShapeStyle{
+			LineStyle: pdf.LineStyle{Width: 1},
+			FillColor: &pdf.Color{R: 0.9, G: 0.9, B: 0.9, A: 1},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := renderedContent(t, doc)
+	// Expect at least 3 line ops (4 straight edges; some may be omitted if
+	// the radius == half-side reduces a side to zero length, but with
+	// radius 10 on 100×150 rect that won't happen).
+	if strings.Count(s, " l\n") < 3 {
+		t.Errorf("expected >=3 line ops for edges, got %d", strings.Count(s, " l\n"))
+	}
+	// 4 corner arcs = at least 4 curve ops.
+	if strings.Count(s, " c\n") < 4 {
+		t.Errorf("expected >=4 curve ops for corners, got %d", strings.Count(s, " c\n"))
+	}
+}
+
+func TestDrawRoundedRectangle_NegativeRadiusErrors(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.DrawRoundedRectangle(
+		pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 100}, -5,
+		pdf.ShapeStyle{LineStyle: pdf.LineStyle{Width: 1}},
+	)
+	if err == nil {
+		t.Error("negative radius should error")
+	}
+}
+
+func TestDrawRoundedRectangle_LargeRadiusClampedToHalfShorterSide(t *testing.T) {
+	// Rect 100×40, radius 50 → clamped to 20 (half of shorter side).
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	err := page.DrawRoundedRectangle(
+		pdf.Rectangle{LLX: 0, LLY: 0, URX: 100, URY: 40}, 50,
+		pdf.ShapeStyle{LineStyle: pdf.LineStyle{Width: 1}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No assertion on exact output — just verify it doesn't error and produces some output.
+	s := renderedContent(t, doc)
+	if strings.Count(s, " c\n") < 4 {
+		t.Errorf("clamped radius should still emit 4 corner arcs, got %d", strings.Count(s, " c\n"))
+	}
+}

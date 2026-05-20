@@ -2,6 +2,7 @@ package asposepdf
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -270,6 +271,62 @@ func (p *Page) DrawPath(path *Path, style ShapeStyle) error {
 	buf.WriteString(op + "\n")
 	buf.WriteString("Q\n")
 	return p.appendToContentStream([]byte(buf.String()))
+}
+
+// DrawRoundedRectangle strokes and/or fills an axis-aligned rectangle with
+// rounded corners of the given radius. The radius is clamped to half the
+// shorter side. Returns error for negative radius.
+//
+// Implemented as a Path: 4 straight edges + 4 quarter-arc corners.
+//
+// Mirrors Aspose.PDF for .NET's Drawing.RoundedRectangle.
+func (p *Page) DrawRoundedRectangle(rect Rectangle, radius float64, style ShapeStyle) error {
+	if radius < 0 {
+		return fmt.Errorf("draw rounded rectangle: negative radius %g", radius)
+	}
+	op := paintOp(style)
+	if op == "" {
+		return nil
+	}
+	w := rect.URX - rect.LLX
+	h := rect.URY - rect.LLY
+	if w <= 0 || h <= 0 {
+		return nil
+	}
+	r := radius
+	if maxR := w / 2; r > maxR {
+		r = maxR
+	}
+	if maxR := h / 2; r > maxR {
+		r = maxR
+	}
+
+	// Build the path:
+	//   Start at (LLX+r, LLY)
+	//   Line to (URX-r, LLY)
+	//   Arc bottom-right corner (center (URX-r, LLY+r), start 270° → +90°)
+	//   Line to (URX, URY-r)
+	//   Arc top-right corner (center (URX-r, URY-r), start 0° → +90°)
+	//   Line to (LLX+r, URY)
+	//   Arc top-left corner (center (LLX+r, URY-r), start 90° → +90°)
+	//   Line to (LLX, LLY+r)
+	//   Arc bottom-left corner (center (LLX+r, LLY+r), start 180° → +90°)
+	//   Close
+	const halfPi = math.Pi / 2
+
+	path := NewPath().
+		MoveTo(rect.LLX+r, rect.LLY).
+		LineTo(rect.URX-r, rect.LLY).
+		Arc(rect.URX-r, rect.LLY+r, r, -halfPi, halfPi). // 270°→360°
+		LineTo(rect.URX, rect.URY-r).
+		Arc(rect.URX-r, rect.URY-r, r, 0, halfPi). // 0°→90°
+		LineTo(rect.LLX+r, rect.URY).
+		Arc(rect.LLX+r, rect.URY-r, r, halfPi, halfPi). // 90°→180°
+		LineTo(rect.LLX, rect.LLY+r).
+		Arc(rect.LLX+r, rect.LLY+r, r, math.Pi, halfPi). // 180°→270°
+		Close()
+
+	return p.DrawPath(path, style)
 }
 
 // DrawPolygon strokes and/or fills a closed polygon (last point connects back
