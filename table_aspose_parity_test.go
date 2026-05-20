@@ -134,3 +134,53 @@ func TestAsposeParity_CellRowSpan(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Aspose .NET sample:
+//   Cell cell = row.Cells.Add();
+//   cell.Image = new Image { File = "logo.png" };
+func TestAsposeParity_CellImage(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	table := pdf.NewTable().SetColumnWidths([]float64{200})
+	table.AddRow().AddCell("").SetImage("testdata/Koala.jpg")
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 500, URX: 250, URY: 750}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Aspose .NET sample:
+//   Row row = table.Rows.Add();
+//   row.BackgroundColor = Color.LightGray;
+//   row.DefaultCellTextState = new TextState { FontSize = 14 };
+func TestAsposeParity_RowStyling(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	table := pdf.NewTable().SetColumnWidths([]float64{100, 100})
+	table.AddRow().
+		SetBackground(&pdf.Color{R: 0.83, G: 0.83, B: 0.83, A: 1}).
+		SetTextStyle(pdf.TextStyle{Size: 14}).
+		AddCells("Header A", "Header B")
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 700}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Aspose .NET-style batch row construction (no exact 1:1 in .NET — closest is
+// LINQ enumeration with explicit Row construction). Our AddRows is the
+// Go-idiomatic equivalent, returning rows for per-row customization.
+func TestAsposeParity_AddRowsBatch(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	page, _ := doc.Page(1)
+	table := pdf.NewTable().SetColumnWidths([]float64{80, 80, 80})
+	rows := table.AddRows([][]string{
+		{"Alice", "Engineering", "23"},
+		{"Bob", "Marketing", "17"},
+		{"Carol", "Operations", "9"},
+	})
+	for _, r := range rows {
+		r.SetBackground(&pdf.Color{R: 0.97, G: 0.97, B: 0.97, A: 1})
+	}
+	if _, err := page.AddTable(table, pdf.Rectangle{LLX: 50, LLY: 600, URX: 290, URY: 700}); err != nil {
+		t.Fatal(err)
+	}
+}
