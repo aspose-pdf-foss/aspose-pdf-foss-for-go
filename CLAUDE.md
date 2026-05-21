@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## License
+
+This codebase is MIT-licensed (see `LICENSE` at the repo root). Every `.go` file carries an `// SPDX-License-Identifier: MIT` header above its `package` declaration. When adding new `.go` files, preserve this convention — the header on its own line followed by a blank line, then the `package` line.
+
 ## Commands
 
 ```bash
