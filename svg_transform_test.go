@@ -23,7 +23,9 @@ func TestMatrixIdentity(t *testing.T) {
 
 func TestParseSVGTransform_Translate(t *testing.T) {
 	m, ok := parseSVGTransform("translate(10, 20)")
-	if !ok { t.Fatal("parse failed") }
+	if !ok {
+		t.Fatal("parse failed")
+	}
 	almostEqualM(t, m, svgMatrix{1, 0, 0, 1, 10, 20}, 1e-9)
 }
 
@@ -75,11 +77,15 @@ func TestParseSVGTransform_SkewX(t *testing.T) {
 
 func TestParseSVGTransform_Empty(t *testing.T) {
 	m, ok := parseSVGTransform("")
-	if !ok { t.Fatal("empty should be identity, not failure") }
+	if !ok {
+		t.Fatal("empty should be identity, not failure")
+	}
 	almostEqualM(t, m, matrixIdentity(), 0)
 }
 
 func TestParseSVGTransform_Garbage(t *testing.T) {
 	_, ok := parseSVGTransform("foo(1,2)")
-	if ok { t.Error("expected garbage to fail") }
+	if ok {
+		t.Error("expected garbage to fail")
+	}
 }

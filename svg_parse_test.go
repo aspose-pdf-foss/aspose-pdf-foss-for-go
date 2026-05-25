@@ -9,9 +9,13 @@ import (
 
 func TestParseSVG_MinimalRect(t *testing.T) {
 	data, err := os.ReadFile("testdata/svg/rect.svg")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	svg, err := parseSVGBytes(data)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if svg.viewBox == nil || svg.viewBox.w != 100 || svg.viewBox.h != 50 {
 		t.Errorf("viewBox = %+v", svg.viewBox)
 	}
@@ -22,7 +26,9 @@ func TestParseSVG_MinimalRect(t *testing.T) {
 		t.Fatalf("expected 1 child, got %d", len(svg.root.children))
 	}
 	r, ok := svg.root.children[0].(*svgRect)
-	if !ok { t.Fatalf("expected *svgRect, got %T", svg.root.children[0]) }
+	if !ok {
+		t.Fatalf("expected *svgRect, got %T", svg.root.children[0])
+	}
 	if r.x != 10 || r.y != 10 || r.w != 80 || r.h != 30 {
 		t.Errorf("rect dims = %g,%g %g×%g", r.x, r.y, r.w, r.h)
 	}
@@ -34,7 +40,9 @@ func TestParseSVG_MinimalRect(t *testing.T) {
 func TestParseSVG_AllShapes(t *testing.T) {
 	data, _ := os.ReadFile("testdata/svg/all_shapes.svg")
 	svg, err := parseSVGBytes(data)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	got := len(svg.root.children)
 	if got != 6 {
 		t.Fatalf("expected 6 shape children, got %d", got)
@@ -52,19 +60,29 @@ func TestParseSVG_AllShapes(t *testing.T) {
 
 func TestParseSVG_InvalidXML(t *testing.T) {
 	_, err := parseSVGBytes([]byte("<svg><not-closed"))
-	if err == nil { t.Error("expected error for malformed XML") }
+	if err == nil {
+		t.Error("expected error for malformed XML")
+	}
 }
 
 func TestParseSVG_NotSVGRoot(t *testing.T) {
 	_, err := parseSVGBytes([]byte("<html><body></body></html>"))
-	if err == nil { t.Error("expected error for non-svg root") }
+	if err == nil {
+		t.Error("expected error for non-svg root")
+	}
 }
 
 func TestParseSVG_NoViewBox(t *testing.T) {
 	svg, err := parseSVGBytes([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="50" height="30"/>`))
-	if err != nil { t.Fatal(err) }
-	if svg.viewBox != nil { t.Errorf("viewBox should be nil") }
-	if svg.width != 50 || svg.height != 30 { t.Errorf("intrinsic = %g × %g", svg.width, svg.height) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svg.viewBox != nil {
+		t.Errorf("viewBox should be nil")
+	}
+	if svg.width != 50 || svg.height != 30 {
+		t.Errorf("intrinsic = %g × %g", svg.width, svg.height)
+	}
 }
 
 func TestParseSVG_GroupInheritance(t *testing.T) {
@@ -101,10 +119,14 @@ func TestParseSVG_GroupInheritance(t *testing.T) {
 func TestParseSVG_SkipsUnsupportedElements(t *testing.T) {
 	data, _ := os.ReadFile("testdata/svg/with_unsupported.svg")
 	svg, err := parseSVGBytes(data)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	rects := 0
 	for _, c := range svg.root.children {
-		if c.svgNodeKind() == "rect" { rects++ }
+		if c.svgNodeKind() == "rect" {
+			rects++
+		}
 	}
 	if rects != 2 {
 		t.Errorf("expected 2 rects, got %d (total children: %d)", rects, len(svg.root.children))
@@ -123,7 +145,9 @@ func TestParseSVG_GradientRefFallbacksToFill(t *testing.T) {
 func TestParseSVG_IgnoresForeignNamespaceAttrs(t *testing.T) {
 	data, _ := os.ReadFile("testdata/svg/with_namespaces.svg")
 	svg, err := parseSVGBytes(data)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	r, _ := svg.root.children[0].(*svgRect)
 	if r == nil || r.style.fill == nil || r.style.fill.R != 1 {
 		t.Errorf("inkscape namespace shouldn't break red fill: %+v", r)
