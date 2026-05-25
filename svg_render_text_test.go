@@ -1,0 +1,119 @@
+// SPDX-License-Identifier: MIT
+
+package asposepdf
+
+import (
+	"bytes"
+	"os"
+	"testing"
+)
+
+func TestRenderSVG_TextEmitsBTET(t *testing.T) {
+	data, err := os.ReadFile("testdata/svg/text_basic.svg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	svg, err := parseSVGBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := NewDocumentFromFormat(PageFormatA4)
+	page, err := doc.Page(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := renderSVG(page, svg, Rectangle{LLX: 0, LLY: 0, URX: 400, URY: 200}); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := page.contentStreams()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// PDF text block landmarks:
+	for _, want := range []string{"BT", "Tf", "Tm", "Tj", "ET"} {
+		if !bytes.Contains(stream, []byte(want)) {
+			t.Errorf("missing %q in stream", want)
+		}
+	}
+}
+
+func TestRenderSVG_TextAnchorMiddle(t *testing.T) {
+	svgData := []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
+		<text x="100" y="50" font-size="16" text-anchor="middle">Centered</text>
+	</svg>`)
+	svg, err := parseSVGBytes(svgData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := NewDocumentFromFormat(PageFormatA4)
+	page, err := doc.Page(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := renderSVG(page, svg, Rectangle{LLX: 0, LLY: 0, URX: 400, URY: 200}); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := page.contentStreams()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Stream should contain text operators.
+	if !bytes.Contains(stream, []byte("BT")) {
+		t.Errorf("expected BT in stream for text-anchor=middle")
+	}
+}
+
+func TestRenderSVG_TextFillColor(t *testing.T) {
+	svgData := []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
+		<text x="10" y="50" font-size="14" fill="red">Red text</text>
+	</svg>`)
+	svg, err := parseSVGBytes(svgData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := NewDocumentFromFormat(PageFormatA4)
+	page, err := doc.Page(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := renderSVG(page, svg, Rectangle{LLX: 0, LLY: 0, URX: 400, URY: 200}); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := page.contentStreams()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Should contain rg (fill color) operator and BT/ET.
+	if !bytes.Contains(stream, []byte("rg")) {
+		t.Errorf("expected rg color operator for fill=red")
+	}
+	if !bytes.Contains(stream, []byte("BT")) {
+		t.Errorf("expected BT in stream")
+	}
+}
+
+func TestRenderSVG_TextDisplayNone(t *testing.T) {
+	svgData := []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
+		<text x="10" y="50" font-size="14" display="none">Hidden</text>
+	</svg>`)
+	svg, err := parseSVGBytes(svgData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := NewDocumentFromFormat(PageFormatA4)
+	page, err := doc.Page(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := renderSVG(page, svg, Rectangle{LLX: 0, LLY: 0, URX: 400, URY: 200}); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := page.contentStreams()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// display=none: no BT should appear.
+	if bytes.Contains(stream, []byte("BT")) {
+		t.Errorf("display=none text should not emit BT, got:\n%s", stream)
+	}
+}
