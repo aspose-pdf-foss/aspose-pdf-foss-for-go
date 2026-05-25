@@ -71,8 +71,8 @@ func defaultSVGStyle() svgStyle {
 		display:       true,
 
 		// Text defaults (Phase 3b)
-		fontFamily: "",            // empty = inherit / use heuristic
-		fontSize:   16,            // CSS spec default
+		fontFamily: "", // empty = inherit / use heuristic
+		fontSize:   16, // CSS spec default
 		bold:       false,
 		italic:     false,
 		anchor:     svgTextAnchorStart,
