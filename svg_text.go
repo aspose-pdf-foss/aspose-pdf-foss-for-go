@@ -110,3 +110,16 @@ func chooseCourier(bold, italic bool) Font {
 	}
 	return FontCourier
 }
+
+// measureSVGTextWidth returns the rendered width of text in user-space units,
+// using the heuristic font (parse time can't access *Document for the resolver).
+// This may be slightly off when the document's resolver maps to a font with
+// different metrics — acceptable trade-off for Phase 3b.
+func measureSVGTextWidth(text string, style svgStyle) float64 {
+	font := heuristicFont(style.fontFamily, style.bold, style.italic)
+	widthFn, _, err := fontWidthAndAscent(font, style.fontSize)
+	if err != nil {
+		return 0
+	}
+	return measureString(text, widthFn)
+}
