@@ -473,8 +473,9 @@ doc.AddSVGWatermark("watermark.svg")
 Supports: basic shapes, full SVG 1.1 path syntax (with elliptical-arc decomposition),
 transforms (`translate`/`rotate`/`scale`/`matrix`/`skewX`/`skewY`), viewBox +
 preserveAspectRatio (all 10 modes), 147 CSS named colors, hex/rgb/rgba, absolute length
-units (px/pt/pc/mm/cm/in), group inheritance cascade. Unsupported in Phase 2 (skipped
-silently): `<text>`, `<image>`, gradients, masks, CSS `<style>` blocks.
+units (px/pt/pc/mm/cm/in), group inheritance cascade, gradient fills (linear + radial via
+PDF shading patterns; `gradientUnits` + `gradientTransform`). Unsupported (skipped
+silently): `<text>`, `<image>`, masks, CSS `<style>` blocks.
 
 ### Annotations
 

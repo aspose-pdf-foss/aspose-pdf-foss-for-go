@@ -258,3 +258,70 @@ func TestAddSVG_RC4Roundtrip(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAddSVG_AsposeLogoFullColorAfterPhase3a(t *testing.T) {
+	doc := pdf.NewDocumentFromFormat(pdf.PageFormatA4)
+	page, _ := doc.Page(1)
+	if err := page.AddSVG("testdata/aspose-logo.svg", pdf.Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 800}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll("result_files", 0755); err != nil {
+		t.Fatal(err)
+	}
+	out := "result_files/TestAddSVG_AsposeLogoFullColorAfterPhase3a.pdf"
+	if err := doc.Save(out); err != nil {
+		t.Fatal(err)
+	}
+	report, err := pdf.Validate(out)
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if !report.Valid {
+		t.Errorf("validation failed: %+v", report.Issues)
+	}
+	reopened, err := pdf.Open(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.PageCount() != 1 {
+		t.Errorf("page count = %d", reopened.PageCount())
+	}
+}
+
+func TestAddSVG_GradientAES128Roundtrip(t *testing.T) {
+	doc := pdf.NewDocumentFromFormat(pdf.PageFormatA4)
+	page, _ := doc.Page(1)
+	page.AddSVG("testdata/aspose-logo.svg", pdf.Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 800})
+	doc.SetEncryption(pdf.EncryptionOptions{
+		UserPassword:  "u",
+		OwnerPassword: "o",
+		Algorithm:     pdf.EncryptionAlgAES128,
+	})
+	os.MkdirAll("result_files", 0755)
+	out := "result_files/TestAddSVG_GradientAES128Roundtrip.pdf"
+	if err := doc.Save(out); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pdf.OpenWithPassword(out, "u"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAddSVG_GradientAES256Roundtrip(t *testing.T) {
+	doc := pdf.NewDocumentFromFormat(pdf.PageFormatA4)
+	page, _ := doc.Page(1)
+	page.AddSVG("testdata/aspose-logo.svg", pdf.Rectangle{LLX: 50, LLY: 700, URX: 300, URY: 800})
+	doc.SetEncryption(pdf.EncryptionOptions{
+		UserPassword:  "u",
+		OwnerPassword: "o",
+		Algorithm:     pdf.EncryptionAlgAES256,
+	})
+	os.MkdirAll("result_files", 0755)
+	out := "result_files/TestAddSVG_GradientAES256Roundtrip.pdf"
+	if err := doc.Save(out); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pdf.OpenWithPassword(out, "u"); err != nil {
+		t.Fatal(err)
+	}
+}
