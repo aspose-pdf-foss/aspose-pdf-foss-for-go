@@ -170,3 +170,46 @@ func TestRenderSVG_DisplayNoneSkipsShape(t *testing.T) {
 		t.Errorf("display=none rect should not emit re op: %s", stream)
 	}
 }
+
+func TestRenderSVG_NestedGroupTransforms(t *testing.T) {
+	svg, _ := parseSVGBytes([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+		<g transform="translate(10,20)">
+			<g transform="rotate(45)">
+				<rect x="0" y="0" width="20" height="20" fill="red"/>
+			</g>
+		</g>
+	</svg>`))
+	doc := NewDocumentFromFormat(PageFormatA4)
+	page, _ := doc.Page(1)
+	if err := renderSVG(page, svg, Rectangle{LLX: 0, LLY: 0, URX: 200, URY: 200}); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := page.contentStreams()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Expect at least 3 q/Q pairs (outer + 2 groups) and 3 cm operators (outer viewBox, translate, rotate).
+	qCount := bytes.Count(stream, []byte("q\n"))
+	cmCount := bytes.Count(stream, []byte("cm\n"))
+	if qCount < 3 {
+		t.Errorf("q count = %d, want >= 3", qCount)
+	}
+	if cmCount < 3 {
+		t.Errorf("cm count = %d, want >= 3", cmCount)
+	}
+}
+
+func TestRenderSVG_GroupOpacity(t *testing.T) {
+	svg, _ := parseSVGBytes([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+		<g opacity="0.5">
+			<rect x="0" y="0" width="50" height="50" fill="red"/>
+		</g>
+	</svg>`))
+	doc := NewDocumentFromFormat(PageFormatA4)
+	page, _ := doc.Page(1)
+	_ = renderSVG(page, svg, Rectangle{LLX: 0, LLY: 0, URX: 200, URY: 200})
+	stream, _ := page.contentStreams()
+	if !bytes.Contains(stream, []byte("gs\n")) {
+		t.Error("expected /GSx gs operator for group opacity")
+	}
+}
