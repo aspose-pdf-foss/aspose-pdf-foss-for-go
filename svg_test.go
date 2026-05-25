@@ -185,3 +185,76 @@ func TestAddSVGWatermark_AsposeLogoOnEveryPage(t *testing.T) {
 		t.Errorf("validation failed: %+v", report.Issues)
 	}
 }
+
+func TestAddSVG_AES128Roundtrip(t *testing.T) {
+	doc := pdf.NewDocumentFromFormat(pdf.PageFormatA4)
+	page, _ := doc.Page(1)
+	if err := page.AddSVG("testdata/svg/all_shapes.svg", pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 800}); err != nil {
+		t.Fatal(err)
+	}
+	doc.SetEncryption(pdf.EncryptionOptions{
+		UserPassword:  "u",
+		OwnerPassword: "o",
+		Algorithm:     pdf.EncryptionAlgAES128,
+	})
+	if err := os.MkdirAll("result_files", 0755); err != nil {
+		t.Fatal(err)
+	}
+	out := "result_files/TestAddSVG_AES128Roundtrip.pdf"
+	if err := doc.Save(out); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := pdf.OpenWithPassword(out, "u")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.PageCount() != 1 {
+		t.Errorf("page count after roundtrip = %d", reopened.PageCount())
+	}
+}
+
+func TestAddSVG_AES256Roundtrip(t *testing.T) {
+	doc := pdf.NewDocumentFromFormat(pdf.PageFormatA4)
+	page, _ := doc.Page(1)
+	if err := page.AddSVG("testdata/aspose-logo.svg", pdf.Rectangle{LLX: 50, LLY: 700, URX: 250, URY: 800}); err != nil {
+		t.Fatal(err)
+	}
+	doc.SetEncryption(pdf.EncryptionOptions{
+		UserPassword:  "u",
+		OwnerPassword: "o",
+		Algorithm:     pdf.EncryptionAlgAES256,
+	})
+	if err := os.MkdirAll("result_files", 0755); err != nil {
+		t.Fatal(err)
+	}
+	out := "result_files/TestAddSVG_AES256Roundtrip.pdf"
+	if err := doc.Save(out); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pdf.OpenWithPassword(out, "u"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAddSVG_RC4Roundtrip(t *testing.T) {
+	doc := pdf.NewDocumentFromFormat(pdf.PageFormatA4)
+	page, _ := doc.Page(1)
+	if err := page.AddSVG("testdata/svg/all_shapes.svg", pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 800}); err != nil {
+		t.Fatal(err)
+	}
+	doc.SetEncryption(pdf.EncryptionOptions{
+		UserPassword:  "u",
+		OwnerPassword: "o",
+		Algorithm:     pdf.EncryptionAlgRC4_128,
+	})
+	if err := os.MkdirAll("result_files", 0755); err != nil {
+		t.Fatal(err)
+	}
+	out := "result_files/TestAddSVG_RC4Roundtrip.pdf"
+	if err := doc.Save(out); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pdf.OpenWithPassword(out, "u"); err != nil {
+		t.Fatal(err)
+	}
+}
