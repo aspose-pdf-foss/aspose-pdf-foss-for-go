@@ -3,8 +3,8 @@
 package asposepdf
 
 import (
+	"bytes"
 	"fmt"
-	"math"
 	"strings"
 )
 
@@ -79,19 +79,16 @@ func (p *Page) DrawLine(from, to Point, style LineStyle) error {
 	if style.Width <= 0 {
 		return nil
 	}
-	var buf strings.Builder
+	var buf bytes.Buffer
 	buf.WriteString("q\n")
 	gsOp, err := p.applyAlpha(style.Color, nil)
 	if err != nil {
 		return err
 	}
 	buf.WriteString(gsOp)
-	buf.WriteString(formatLineStyle(style))
-	buf.WriteString(fmt.Sprintf("%s %s m\n", formatFloat(from.X), formatFloat(from.Y)))
-	buf.WriteString(fmt.Sprintf("%s %s l\n", formatFloat(to.X), formatFloat(to.Y)))
-	buf.WriteString("S\n")
+	emitLineToBuf(&buf, p, from, to, style)
 	buf.WriteString("Q\n")
-	return p.appendToContentStream([]byte(buf.String()))
+	return p.appendToContentStream(buf.Bytes())
 }
 
 // paintOp returns the PDF painting operator for the given style:
@@ -148,21 +145,16 @@ func (p *Page) DrawRectangle(rect Rectangle, style ShapeStyle) error {
 	if op == "" {
 		return nil
 	}
-	w := rect.URX - rect.LLX
-	h := rect.URY - rect.LLY
-	var buf strings.Builder
+	var buf bytes.Buffer
 	buf.WriteString("q\n")
 	gsOp, err := p.applyAlpha(style.LineStyle.Color, style.FillColor)
 	if err != nil {
 		return err
 	}
 	buf.WriteString(gsOp)
-	buf.WriteString(formatShapeStyle(style))
-	buf.WriteString(fmt.Sprintf("%s %s %s %s re %s\n",
-		formatFloat(rect.LLX), formatFloat(rect.LLY),
-		formatFloat(w), formatFloat(h), op))
+	emitRectangleToBuf(&buf, p, rect, style)
 	buf.WriteString("Q\n")
-	return p.appendToContentStream([]byte(buf.String()))
+	return p.appendToContentStream(buf.Bytes())
 }
 
 // ellipseApproxKappa is the magic constant for cubic Bezier approximation of
@@ -229,18 +221,16 @@ func (p *Page) DrawEllipse(center Point, rx, ry float64, style ShapeStyle) error
 	if op == "" || rx == 0 || ry == 0 {
 		return nil
 	}
-	var buf strings.Builder
+	var buf bytes.Buffer
 	buf.WriteString("q\n")
 	gsOp, err := p.applyAlpha(style.LineStyle.Color, style.FillColor)
 	if err != nil {
 		return err
 	}
 	buf.WriteString(gsOp)
-	buf.WriteString(formatShapeStyle(style))
-	buf.WriteString(ellipsePathOps(center.X, center.Y, rx, ry))
-	buf.WriteString(op + "\n")
+	emitEllipseToBuf(&buf, p, center, rx, ry, style)
 	buf.WriteString("Q\n")
-	return p.appendToContentStream([]byte(buf.String()))
+	return p.appendToContentStream(buf.Bytes())
 }
 
 // DrawPolyline strokes an open polyline (first and last points are NOT
@@ -256,21 +246,16 @@ func (p *Page) DrawPolyline(points []Point, style LineStyle) error {
 	if style.Width <= 0 {
 		return nil
 	}
-	var buf strings.Builder
+	var buf bytes.Buffer
 	buf.WriteString("q\n")
 	gsOp, err := p.applyAlpha(style.Color, nil)
 	if err != nil {
 		return err
 	}
 	buf.WriteString(gsOp)
-	buf.WriteString(formatLineStyle(style))
-	buf.WriteString(fmt.Sprintf("%s %s m\n", formatFloat(points[0].X), formatFloat(points[0].Y)))
-	for _, pt := range points[1:] {
-		buf.WriteString(fmt.Sprintf("%s %s l\n", formatFloat(pt.X), formatFloat(pt.Y)))
-	}
-	buf.WriteString("S\n")
+	emitPolylineToBuf(&buf, p, points, style)
 	buf.WriteString("Q\n")
-	return p.appendToContentStream([]byte(buf.String()))
+	return p.appendToContentStream(buf.Bytes())
 }
 
 // pathOpsToOperators converts a Path's internal ops into a PDF content stream
@@ -311,7 +296,7 @@ func (p *Page) DrawPath(path *Path, style ShapeStyle) error {
 	if op == "" {
 		return nil
 	}
-	var buf strings.Builder
+	var buf bytes.Buffer
 	buf.WriteString("q\n")
 	gsOp, err := p.applyAlpha(style.LineStyle.Color, style.FillColor)
 	if err != nil {
@@ -322,7 +307,7 @@ func (p *Page) DrawPath(path *Path, style ShapeStyle) error {
 	buf.WriteString(pathOpsToOperators(path.ops))
 	buf.WriteString(op + "\n")
 	buf.WriteString("Q\n")
-	return p.appendToContentStream([]byte(buf.String()))
+	return p.appendToContentStream(buf.Bytes())
 }
 
 // DrawRoundedRectangle strokes and/or fills an axis-aligned rectangle with
@@ -345,40 +330,16 @@ func (p *Page) DrawRoundedRectangle(rect Rectangle, radius float64, style ShapeS
 	if w <= 0 || h <= 0 {
 		return nil
 	}
-	r := radius
-	if maxR := w / 2; r > maxR {
-		r = maxR
+	var buf bytes.Buffer
+	buf.WriteString("q\n")
+	gsOp, err := p.applyAlpha(style.LineStyle.Color, style.FillColor)
+	if err != nil {
+		return err
 	}
-	if maxR := h / 2; r > maxR {
-		r = maxR
-	}
-
-	// Build the path:
-	//   Start at (LLX+r, LLY)
-	//   Line to (URX-r, LLY)
-	//   Arc bottom-right corner (center (URX-r, LLY+r), start 270° → +90°)
-	//   Line to (URX, URY-r)
-	//   Arc top-right corner (center (URX-r, URY-r), start 0° → +90°)
-	//   Line to (LLX+r, URY)
-	//   Arc top-left corner (center (LLX+r, URY-r), start 90° → +90°)
-	//   Line to (LLX, LLY+r)
-	//   Arc bottom-left corner (center (LLX+r, LLY+r), start 180° → +90°)
-	//   Close
-	const halfPi = math.Pi / 2
-
-	path := NewPath().
-		MoveTo(rect.LLX+r, rect.LLY).
-		LineTo(rect.URX-r, rect.LLY).
-		Arc(rect.URX-r, rect.LLY+r, r, -halfPi, halfPi). // 270°→360°
-		LineTo(rect.URX, rect.URY-r).
-		Arc(rect.URX-r, rect.URY-r, r, 0, halfPi). // 0°→90°
-		LineTo(rect.LLX+r, rect.URY).
-		Arc(rect.LLX+r, rect.URY-r, r, halfPi, halfPi). // 90°→180°
-		LineTo(rect.LLX, rect.LLY+r).
-		Arc(rect.LLX+r, rect.LLY+r, r, math.Pi, halfPi). // 180°→270°
-		Close()
-
-	return p.DrawPath(path, style)
+	buf.WriteString(gsOp)
+	emitRoundedRectangleToBuf(&buf, p, rect, radius, style)
+	buf.WriteString("Q\n")
+	return p.appendToContentStream(buf.Bytes())
 }
 
 // DrawPolygon strokes and/or fills a closed polygon (last point connects back
@@ -394,20 +355,14 @@ func (p *Page) DrawPolygon(points []Point, style ShapeStyle) error {
 	if op == "" {
 		return nil
 	}
-	var buf strings.Builder
+	var buf bytes.Buffer
 	buf.WriteString("q\n")
 	gsOp, err := p.applyAlpha(style.LineStyle.Color, style.FillColor)
 	if err != nil {
 		return err
 	}
 	buf.WriteString(gsOp)
-	buf.WriteString(formatShapeStyle(style))
-	buf.WriteString(fmt.Sprintf("%s %s m\n", formatFloat(points[0].X), formatFloat(points[0].Y)))
-	for _, pt := range points[1:] {
-		buf.WriteString(fmt.Sprintf("%s %s l\n", formatFloat(pt.X), formatFloat(pt.Y)))
-	}
-	buf.WriteString(" h\n")
-	buf.WriteString(op + "\n")
+	emitPolygonToBuf(&buf, p, points, style)
 	buf.WriteString("Q\n")
-	return p.appendToContentStream([]byte(buf.String()))
+	return p.appendToContentStream(buf.Bytes())
 }

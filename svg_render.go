@@ -79,14 +79,90 @@ func renderSVGGroup(buf *bytes.Buffer, p *Page, g *svgGroup) {
 	buf.WriteString("Q\n")
 }
 
-// Shape rendering stubs — filled in by Task 12.
-func renderSVGRect(buf *bytes.Buffer, p *Page, r *svgRect)          {}
-func renderSVGCircle(buf *bytes.Buffer, p *Page, c *svgCircle)      {}
-func renderSVGEllipse(buf *bytes.Buffer, p *Page, e *svgEllipse)    {}
-func renderSVGLine(buf *bytes.Buffer, p *Page, l *svgLine)          {}
-func renderSVGPolyline(buf *bytes.Buffer, p *Page, pl *svgPolyline) {}
-func renderSVGPolygon(buf *bytes.Buffer, p *Page, pg *svgPolygon)   {}
-func renderSVGPath(buf *bytes.Buffer, p *Page, sp *svgPath)         {}
+func renderSVGRect(buf *bytes.Buffer, p *Page, r *svgRect) {
+	if !r.style.display || r.w <= 0 || r.h <= 0 {
+		return
+	}
+	buf.WriteString("q\n")
+	if r.transform != nil {
+		writeCMOperator(buf, *r.transform)
+	}
+	style := svgStyleToShapeStyle(r.style)
+	rect := Rectangle{LLX: r.x, LLY: r.y, URX: r.x + r.w, URY: r.y + r.h}
+	if r.rx > 0 || r.ry > 0 {
+		rr := r.rx
+		if rr == 0 {
+			rr = r.ry
+		}
+		emitRoundedRectangleToBuf(buf, p, rect, rr, style)
+	} else {
+		emitRectangleToBuf(buf, p, rect, style)
+	}
+	buf.WriteString("Q\n")
+}
+
+func renderSVGCircle(buf *bytes.Buffer, p *Page, c *svgCircle) {
+	if !c.style.display || c.r <= 0 {
+		return
+	}
+	buf.WriteString("q\n")
+	if c.transform != nil {
+		writeCMOperator(buf, *c.transform)
+	}
+	emitCircleToBuf(buf, p, Point{X: c.cx, Y: c.cy}, c.r, svgStyleToShapeStyle(c.style))
+	buf.WriteString("Q\n")
+}
+
+func renderSVGEllipse(buf *bytes.Buffer, p *Page, e *svgEllipse) {
+	if !e.style.display || e.rx <= 0 || e.ry <= 0 {
+		return
+	}
+	buf.WriteString("q\n")
+	if e.transform != nil {
+		writeCMOperator(buf, *e.transform)
+	}
+	emitEllipseToBuf(buf, p, Point{X: e.cx, Y: e.cy}, e.rx, e.ry, svgStyleToShapeStyle(e.style))
+	buf.WriteString("Q\n")
+}
+
+func renderSVGLine(buf *bytes.Buffer, p *Page, l *svgLine) {
+	if !l.style.display {
+		return
+	}
+	buf.WriteString("q\n")
+	if l.transform != nil {
+		writeCMOperator(buf, *l.transform)
+	}
+	emitLineToBuf(buf, p, Point{X: l.x1, Y: l.y1}, Point{X: l.x2, Y: l.y2}, svgStyleToLineStyle(l.style))
+	buf.WriteString("Q\n")
+}
+
+func renderSVGPolyline(buf *bytes.Buffer, p *Page, pl *svgPolyline) {
+	if !pl.style.display || len(pl.points) < 2 {
+		return
+	}
+	buf.WriteString("q\n")
+	if pl.transform != nil {
+		writeCMOperator(buf, *pl.transform)
+	}
+	emitPolylineToBuf(buf, p, pl.points, svgStyleToLineStyle(pl.style))
+	buf.WriteString("Q\n")
+}
+
+func renderSVGPolygon(buf *bytes.Buffer, p *Page, pg *svgPolygon) {
+	if !pg.style.display || len(pg.points) < 3 {
+		return
+	}
+	buf.WriteString("q\n")
+	if pg.transform != nil {
+		writeCMOperator(buf, *pg.transform)
+	}
+	emitPolygonToBuf(buf, p, pg.points, svgStyleToShapeStyle(pg.style))
+	buf.WriteString("Q\n")
+}
+
+// renderSVGPath is a stub — implemented in Task 13.
+func renderSVGPath(buf *bytes.Buffer, p *Page, sp *svgPath) {}
 
 // applyGroupOpacity emits a `/GSx gs` operator if the group has opacity < 1.
 // Returns any error from ensureExtGState.
@@ -99,4 +175,36 @@ func applyGroupOpacity(buf *bytes.Buffer, p *Page, s svgStyle) error {
 		fmt.Fprintf(buf, "/%s gs\n", gsName)
 	}
 	return nil
+}
+
+// svgStyleToShapeStyle maps the resolved SVG cascade into Phase 1's ShapeStyle.
+func svgStyleToShapeStyle(s svgStyle) ShapeStyle {
+	ss := ShapeStyle{LineStyle: svgStyleToLineStyle(s)}
+	if s.fill != nil {
+		c := *s.fill
+		c.A *= s.fillOpacity
+		ss.FillColor = &c
+	}
+	return ss
+}
+
+// svgStyleToLineStyle maps stroke-related svgStyle fields into Phase 1's LineStyle.
+// Returns Width=0 (no stroke) when stroke color is nil.
+func svgStyleToLineStyle(s svgStyle) LineStyle {
+	ls := LineStyle{
+		Width:       s.strokeWidth,
+		DashPattern: s.dashArray,
+		DashPhase:   s.dashOffset,
+		Cap:         s.lineCap,
+		Join:        s.lineJoin,
+		MiterLimit:  s.miterLimit,
+	}
+	if s.stroke != nil {
+		c := *s.stroke
+		c.A *= s.strokeOpacity
+		ls.Color = &c
+	} else {
+		ls.Width = 0 // signal "no stroke"
+	}
+	return ls
 }
