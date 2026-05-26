@@ -8,8 +8,8 @@ type cssSelectorKind int
 
 const (
 	cssSelClass   cssSelectorKind = iota // .foo
-	cssSelID                              // #foo
-	cssSelElement                         // foo
+	cssSelID                             // #foo
+	cssSelElement                        // foo
 )
 
 type cssSelector struct {
