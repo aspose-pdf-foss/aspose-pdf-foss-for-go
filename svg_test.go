@@ -442,3 +442,40 @@ func TestAddSVG_DefsImageClipAES128Roundtrip(t *testing.T) {
 		})
 	}
 }
+
+func TestPage_AddSVG_MaskCircle(t *testing.T) {
+	doc := pdf.NewDocumentFromFormat(pdf.PageFormatA4)
+	page, _ := doc.Page(1)
+	if err := page.AddSVG("testdata/svg/mask_circle.svg",
+		pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 800}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll("result_files", 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Save("result_files/TestPage_AddSVG_MaskCircle.pdf"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAddSVG_MaskAES128Roundtrip(t *testing.T) {
+	doc := pdf.NewDocumentFromFormat(pdf.PageFormatA4)
+	page, _ := doc.Page(1)
+	if err := page.AddSVG("testdata/svg/mask_circle.svg",
+		pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 800}); err != nil {
+		t.Fatal(err)
+	}
+	doc.SetEncryption(pdf.EncryptionOptions{
+		UserPassword: "u", Algorithm: pdf.EncryptionAlgAES128,
+	})
+	if err := os.MkdirAll("result_files", 0755); err != nil {
+		t.Fatal(err)
+	}
+	out := "result_files/TestAddSVG_MaskAES128Roundtrip.pdf"
+	if err := doc.Save(out); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pdf.OpenWithPassword(out, "u"); err != nil {
+		t.Fatal(err)
+	}
+}
