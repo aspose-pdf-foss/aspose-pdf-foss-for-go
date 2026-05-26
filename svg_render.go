@@ -77,6 +77,7 @@ func renderSVGGroup(buf *bytes.Buffer, p *Page, svg *SVG, g *svgGroup) {
 	}
 	applyClipPath(buf, p, svg, g.style)
 	applyMask(buf, p, svg, g.style, nil)
+	applySVGFilter(buf, p, svg, g.style, nil)
 	if err := applyGroupOpacity(buf, p, g.style); err != nil {
 		// best-effort: skip opacity on error
 		_ = err
@@ -95,6 +96,7 @@ func renderSVGRect(buf *bytes.Buffer, p *Page, svg *SVG, r *svgRect) {
 	}
 	applyClipPath(buf, p, svg, r.style)
 	applyMask(buf, p, svg, r.style, r)
+	applySVGFilter(buf, p, svg, r.style, r)
 	style := svgStyleToShapeStyle(r.style)
 	if name := resolveGradientFill(p, svg, r.style.fill, r); name != "" {
 		style.FillPattern = name
@@ -122,6 +124,7 @@ func renderSVGCircle(buf *bytes.Buffer, p *Page, svg *SVG, c *svgCircle) {
 	}
 	applyClipPath(buf, p, svg, c.style)
 	applyMask(buf, p, svg, c.style, c)
+	applySVGFilter(buf, p, svg, c.style, c)
 	style := svgStyleToShapeStyle(c.style)
 	if name := resolveGradientFill(p, svg, c.style.fill, c); name != "" {
 		style.FillPattern = name
@@ -140,6 +143,7 @@ func renderSVGEllipse(buf *bytes.Buffer, p *Page, svg *SVG, e *svgEllipse) {
 	}
 	applyClipPath(buf, p, svg, e.style)
 	applyMask(buf, p, svg, e.style, e)
+	applySVGFilter(buf, p, svg, e.style, e)
 	style := svgStyleToShapeStyle(e.style)
 	if name := resolveGradientFill(p, svg, e.style.fill, e); name != "" {
 		style.FillPattern = name
@@ -158,6 +162,7 @@ func renderSVGLine(buf *bytes.Buffer, p *Page, svg *SVG, l *svgLine) {
 	}
 	applyClipPath(buf, p, svg, l.style)
 	applyMask(buf, p, svg, l.style, l)
+	applySVGFilter(buf, p, svg, l.style, l)
 	emitLineToBuf(buf, p, Point{X: l.x1, Y: l.y1}, Point{X: l.x2, Y: l.y2}, svgStyleToLineStyle(l.style))
 	buf.WriteString("Q\n")
 }
@@ -172,6 +177,7 @@ func renderSVGPolyline(buf *bytes.Buffer, p *Page, svg *SVG, pl *svgPolyline) {
 	}
 	applyClipPath(buf, p, svg, pl.style)
 	applyMask(buf, p, svg, pl.style, pl)
+	applySVGFilter(buf, p, svg, pl.style, pl)
 	emitPolylineToBuf(buf, p, pl.points, svgStyleToLineStyle(pl.style))
 	buf.WriteString("Q\n")
 }
@@ -186,6 +192,7 @@ func renderSVGPolygon(buf *bytes.Buffer, p *Page, svg *SVG, pg *svgPolygon) {
 	}
 	applyClipPath(buf, p, svg, pg.style)
 	applyMask(buf, p, svg, pg.style, pg)
+	applySVGFilter(buf, p, svg, pg.style, pg)
 	style := svgStyleToShapeStyle(pg.style)
 	if name := resolveGradientFill(p, svg, pg.style.fill, pg); name != "" {
 		style.FillPattern = name
@@ -207,6 +214,7 @@ func renderSVGPath(buf *bytes.Buffer, p *Page, svg *SVG, sp *svgPath) {
 	}
 	applyClipPath(buf, p, svg, sp.style)
 	applyMask(buf, p, svg, sp.style, sp)
+	applySVGFilter(buf, p, svg, sp.style, sp)
 	// Build a Phase 1 Path from svgPathOps for reuse of emitPathToBuf.
 	path := NewPath()
 	for _, op := range sp.commands {

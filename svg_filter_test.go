@@ -3,6 +3,7 @@
 package asposepdf
 
 import (
+	"bytes"
 	"os"
 	"testing"
 )
@@ -51,5 +52,31 @@ func TestParseSVG_FilterUnsupportedPrimitiveStored(t *testing.T) {
 	}
 	if f.findDropShadow() != nil {
 		t.Error("findDropShadow should return nil when no drop shadow present")
+	}
+}
+
+func TestApplyStyle_Filter(t *testing.T) {
+	s := defaultSVGStyle()
+	applySingleSVGStyleProp(&s, "filter", "url(#ds)")
+	if s.filter != "ds" {
+		t.Errorf("filter = %q", s.filter)
+	}
+	applySingleSVGStyleProp(&s, "filter", "none")
+	if s.filter != "" {
+		t.Errorf("filter should be cleared, got %q", s.filter)
+	}
+}
+
+func TestRenderSVG_FilterDropShadow(t *testing.T) {
+	data, _ := os.ReadFile("testdata/svg/filter_dropshadow.svg")
+	svg, _ := parseSVGBytes(data)
+	doc := NewDocumentFromFormat(PageFormatA4)
+	page, _ := doc.Page(1)
+	_ = renderSVG(page, svg, Rectangle{LLX: 0, LLY: 0, URX: 200, URY: 200})
+	stream, _ := page.contentStreams()
+	// Expect at least 2 "re" operators: shadow rect + original rect
+	count := bytes.Count(stream, []byte(" re"))
+	if count < 2 {
+		t.Errorf("expected ≥2 re ops (shadow + original), got %d:\n%s", count, stream)
 	}
 }

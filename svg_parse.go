@@ -359,6 +359,17 @@ func applySingleSVGStyleProp(s *svgStyle, prop, val string) {
 				s.mask = id
 			}
 		}
+	case "filter":
+		v := strings.TrimSpace(val)
+		if v == "none" || v == "" {
+			s.filter = ""
+		} else if strings.HasPrefix(v, "url(") {
+			end := strings.IndexByte(v, ')')
+			if end > 0 {
+				id := strings.Trim(v[4:end], "# \t")
+				s.filter = id
+			}
+		}
 	}
 }
 

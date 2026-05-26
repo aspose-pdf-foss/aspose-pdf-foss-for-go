@@ -70,6 +70,7 @@ func renderSVGImage(buf *bytes.Buffer, p *Page, svg *SVG, im *svgImage) {
 	}
 	applyClipPath(buf, p, svg, im.style)
 	applyMask(buf, p, svg, im.style, im)
+	applySVGFilter(buf, p, svg, im.style, im)
 	// Place the unit-square image XObject: [renderW 0 0 renderH originX originY] cm
 	fmt.Fprintf(buf, "%s 0 0 %s %s %s cm\n",
 		formatFloat(renderW),
