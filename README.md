@@ -480,8 +480,13 @@ with mixed content, cursor positioning, `dx`/`dy`/absolute `x`/`y`, `text-anchor
 mapping and pluggable TTF resolver, `<image>` (data: URI — PNG and JPEG base64 inline),
 `<defs>`/`<use>`/`<symbol>` (reusable elements with forward-ref and cycle detection),
 `<clipPath>` (clipping paths mapped to PDF `W`/`W*` operators; `clip-path="url(#id)"`
-on any shape/text/image). Unsupported (skipped silently): `<mask>`, external `href` in
-`<image>`, CSS `<style>` blocks, `<textPath>`, vertical writing modes.
+on any shape/text/image), `<mask>` (soft masks via PDF Form XObject transparency group +
+ExtGState `/SMask`; `maskUnits` and `maskContentUnits` both supported), CSS `<style>`
+blocks (`.class`/`#id`/element selectors with correct specificity cascade), `<filter>`
+with `feDropShadow` emulated as offset+alpha bbox duplicate, `<marker>` (`marker-start`/
+`marker-mid`/`marker-end`) with `orient=auto` rotation along path tangent and `refX`/`refY`
+anchor. Unsupported (skipped silently): `<textPath>`, vertical writing modes, external
+`href` in `<image>`, real Gaussian blur, em/ex/% length units.
 
 For SVG files containing Cyrillic or other non-Latin text, register a font resolver that
 returns your embedded TTF:
