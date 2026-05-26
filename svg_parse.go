@@ -379,6 +379,39 @@ func applySingleSVGStyleProp(s *svgStyle, prop, val string) {
 				s.filter = id
 			}
 		}
+	case "marker-start":
+		v := strings.TrimSpace(val)
+		if v == "none" || v == "" {
+			s.markerStart = ""
+		} else if strings.HasPrefix(v, "url(") {
+			end := strings.IndexByte(v, ')')
+			if end > 0 {
+				id := strings.Trim(v[4:end], "# \t")
+				s.markerStart = id
+			}
+		}
+	case "marker-mid":
+		v := strings.TrimSpace(val)
+		if v == "none" || v == "" {
+			s.markerMid = ""
+		} else if strings.HasPrefix(v, "url(") {
+			end := strings.IndexByte(v, ')')
+			if end > 0 {
+				id := strings.Trim(v[4:end], "# \t")
+				s.markerMid = id
+			}
+		}
+	case "marker-end":
+		v := strings.TrimSpace(val)
+		if v == "none" || v == "" {
+			s.markerEnd = ""
+		} else if strings.HasPrefix(v, "url(") {
+			end := strings.IndexByte(v, ')')
+			if end > 0 {
+				id := strings.Trim(v[4:end], "# \t")
+				s.markerEnd = id
+			}
+		}
 	}
 }
 

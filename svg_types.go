@@ -65,6 +65,11 @@ type svgStyle struct {
 	// Phase 3d: CSS selector matching support
 	cssClasses []string
 	cssID      string
+
+	// Phase 3d: marker references (bare ids, no #). Empty = no marker.
+	markerStart string
+	markerMid   string
+	markerEnd   string
 }
 
 // defaultSVGStyle returns the SVG initial value per SVG spec §6.2 table.

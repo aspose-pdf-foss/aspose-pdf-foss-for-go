@@ -302,3 +302,24 @@ func TestApplyStyle_Mask(t *testing.T) {
 		t.Errorf("mask = %q", s.mask)
 	}
 }
+
+func TestApplyStyle_Markers(t *testing.T) {
+	s := defaultSVGStyle()
+	applySingleSVGStyleProp(&s, "marker-start", "url(#s)")
+	applySingleSVGStyleProp(&s, "marker-mid", "url(#m)")
+	applySingleSVGStyleProp(&s, "marker-end", "url(#e)")
+	if s.markerStart != "s" {
+		t.Errorf("markerStart = %q", s.markerStart)
+	}
+	if s.markerMid != "m" {
+		t.Errorf("markerMid = %q", s.markerMid)
+	}
+	if s.markerEnd != "e" {
+		t.Errorf("markerEnd = %q", s.markerEnd)
+	}
+	// none clears
+	applySingleSVGStyleProp(&s, "marker-end", "none")
+	if s.markerEnd != "" {
+		t.Errorf("markerEnd should clear, got %q", s.markerEnd)
+	}
+}
