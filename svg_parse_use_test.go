@@ -3,6 +3,7 @@
 package asposepdf
 
 import (
+	"bytes"
 	"os"
 	"testing"
 )
@@ -92,4 +93,24 @@ func TestResolveUseReferences_CycleDropped(t *testing.T) {
 	// use reference to "a" should be detected as cycle and dropped.
 	// We just verify no infinite loop and no panic.
 	_ = svg
+}
+
+func TestRenderSVG_UseRendersClones(t *testing.T) {
+	data, _ := os.ReadFile("testdata/svg/use_simple.svg")
+	svg, err := parseSVGBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := NewDocumentFromFormat(PageFormatA4)
+	page, _ := doc.Page(1)
+	if err := renderSVG(page, svg, Rectangle{LLX: 0, LLY: 0, URX: 400, URY: 400}); err != nil {
+		t.Fatal(err)
+	}
+	stream, _ := page.contentStreams()
+	// Each cloned circle emits a fill color setter (rg). With 2 clones, expect ≥2.
+	count := bytes.Count(stream, []byte(" rg\n"))
+	if count < 2 {
+		t.Errorf("expected ≥2 'rg' (fill color) operators for 2 cloned circles, got %d:\n%s",
+			count, stream)
+	}
 }
