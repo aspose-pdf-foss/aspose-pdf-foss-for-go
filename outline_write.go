@@ -33,13 +33,14 @@ func visibleDescendantCount(node *OutlineItemCollection) int {
 }
 
 // encodeDestination produces the destination array per ISO 32000-1 §12.3.2.2.
-// The page reference is a pdfDirectRef bypassing the writer's ID remap,
-// so the array points at the page's actual emitted object number.
+// The page reference is a pdfRef carrying the page's CURRENT object number
+// in d.objects; the writer's remap (the same one used for /Pages/Kids) then
+// renumbers it to the emitted object number.
 func encodeDestination(d Destination) pdfArray {
 	if d == nil || d.Page() == nil {
 		return nil
 	}
-	pageRef := pdfDirectRef{Num: d.Page().pageObj().Num}
+	pageRef := pdfRef{Num: d.Page().pageObj().Num}
 	switch v := d.(type) {
 	case *DestinationXYZ:
 		return pdfArray{pageRef, pdfName("/XYZ"),

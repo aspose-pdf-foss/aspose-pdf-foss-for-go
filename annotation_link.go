@@ -120,3 +120,28 @@ func (a *LinkAnnotation) SetHighlight(h LinkHighlightMode) {
 		delete(a.dict, "/H")
 	}
 }
+
+// BorderWidth returns the width (in points) of the rectangular border
+// drawn around the link annotation. Returns the PDF default of 1pt when
+// /Border is absent, matching the behaviour of viewers like Acrobat.
+func (a *LinkAnnotation) BorderWidth() float64 {
+	arr, ok := a.dict["/Border"].(pdfArray)
+	if !ok || len(arr) < 3 {
+		return 1
+	}
+	w, err := toFloat(arr[2])
+	if err != nil {
+		return 1
+	}
+	return w
+}
+
+// SetBorderWidth writes the /Border entry — [horiz-corner-radius
+// vert-corner-radius border-width]. Pass 0 to suppress the rectangle
+// PDF viewers otherwise draw around the link by default.
+func (a *LinkAnnotation) SetBorderWidth(width float64) {
+	if width < 0 {
+		width = 0
+	}
+	a.dict["/Border"] = pdfArray{0.0, 0.0, width}
+}
