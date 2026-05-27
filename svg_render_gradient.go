@@ -2,11 +2,21 @@
 
 package asposepdf
 
+import "math"
+
 // resolveGradientFill returns a PDF pattern resource name (e.g. "/P0") when
 // the paint value is a gradient reference that can be resolved and registered.
 // Returns "" when paint is nil, is a plain color, or the ref is unknown.
-// Handles gradientUnits + gradientTransform composition.
-func resolveGradientFill(p *Page, svg *SVG, paint *svgPaint, shape svgNode) string {
+//
+// ctm is the cumulative SVG-to-page transform in effect at the shape's draw
+// site (composed of the viewBox-fit matrix plus any group/shape `transform=`
+// attributes encountered along the way). PDF Type 2 (shading) pattern /Matrix
+// maps pattern coordinates to the page's *initial* user space (ISO 32000-1
+// §8.7.4.5.1) — not to the user space at scn time — so we must fold the CTM
+// into the matrix here. The cm operators emitted around the shape draw apply
+// to the path coordinates and stroke/fill colour selection but, per spec, do
+// not affect a Type 2 pattern's coordinate mapping.
+func resolveGradientFill(p *Page, svg *SVG, paint *svgPaint, shape svgNode, ctm svgMatrix) string {
 	if paint == nil || paint.gradRef == "" || svg == nil {
 		return ""
 	}
@@ -15,8 +25,9 @@ func resolveGradientFill(p *Page, svg *SVG, paint *svgPaint, shape svgNode) stri
 		return ""
 	}
 
-	// Start with identity; compose bounding-box scale if objectBoundingBox.
-	matrix := svgMatrix{1, 0, 0, 1, 0, 0} // identity
+	// Start with the cumulative CTM. Compose bounding-box scale (when
+	// gradientUnits is objectBoundingBox) and gradientTransform on top.
+	matrix := ctm
 	var units svgGradientUnits
 	var transform *svgMatrix
 	switch g := grad.(type) {
@@ -133,11 +144,12 @@ func pathOpsBBox(ops []svgPathOp) (x0, y0, x1, y1 float64) {
 // buildShadingFunction returns a *pdfObject containing a PDF function that maps t in [0,1]
 // to an RGB color triple, suitable for use as the /Function entry of a PDF shading dictionary.
 //
-//   - 0 stops  → treated as single opaque-black stop
-//   - 1 stop   → Type 2 exponential with C0 == C1 (constant color)
-//   - 2 stops  → Type 2 exponential interpolating between the two stops
-//   - 3+ stops → Type 3 stitching function containing (N-1) Type 2 sub-functions,
-//     /Bounds at each internal stop offset, /Encode [0 1 …]
+// SVG allows the first stop offset to be > 0 and the last < 1 — in that case the
+// region before the first stop is filled with the first stop's color and the
+// region after the last stop with the last stop's color (per SVG 1.1 §13.2.4).
+// To replicate this in PDF stitching, we prepend a synthetic stop at offset 0
+// and append one at offset 1 (cloning the colors) so the full [0,1] domain is
+// covered correctly.
 //
 // The returned object has Num==0; the caller is responsible for assigning a real
 // object number and inserting it into doc.objects before writing.
@@ -147,6 +159,22 @@ func buildShadingFunction(stops []svgGradientStop) *pdfObject {
 			{offset: 0, color: &Color{R: 0, G: 0, B: 0, A: 1}, opacity: 1},
 		}
 	}
+
+	// Normalize: ensure the first stop is at offset 0 and the last at 1, by
+	// cloning the endpoint colors into synthetic stops. The cloned regions
+	// render as a solid colour because the exponential sub-function spanning
+	// them has C0 == C1.
+	if stops[0].offset > 0 {
+		head := stops[0]
+		head.offset = 0
+		stops = append([]svgGradientStop{head}, stops...)
+	}
+	if stops[len(stops)-1].offset < 1 {
+		tail := stops[len(stops)-1]
+		tail.offset = 1
+		stops = append(stops, tail)
+	}
+
 	if len(stops) == 1 {
 		return &pdfObject{Value: exponentialFunctionDict(stops[0].color, stops[0].color)}
 	}
@@ -194,15 +222,34 @@ func buildShadingFunction(stops []svgGradientStop) *pdfObject {
 }
 
 // gradientToShadingObject creates a /Shading dictionary indirect object for the gradient.
-// The shading uses gradient coords as-is (no bbox/transform composition — that's the caller's
-// responsibility via the /Matrix entry on the parent /Pattern dict).
 //
-// The /Function entry is stored as a pdfRef to the function object already registered in
-// doc.objects (the caller — ensurePatternResource — handles that registration).
+// The supplied matrix m (gradientUnits + gradientTransform composition) is baked
+// into /Coords so the shading dictionary holds final user-space coordinates.
+// The caller can then emit /Matrix as identity on the parent /Pattern dict.
 //
-// Returns nil if grad is an unsupported type or has no document reference.
+// Why bake instead of relying on /Pattern /Matrix: real-world PDF renderers
+// (Acrobat, MuPDF/PyMuPDF, …) disagree in practice on how /Matrix composes
+// with the CTM for Type 3 (radial) shadings. Baking the transform into
+// /Coords removes that ambiguity — the gradient renders identically across
+// all spec-conformant viewers. The Aspose logo's blades exposed this: with
+// /Matrix kept separate, viewers were treating /Coords as if already in user
+// space, leaving the blade pixels at distance ~500+ units from the gradient
+// center and so painting them all with the extended last-stop colour
+// ("invisible gradient"). After baking, gradient extents land where SVG
+// intends them.
+//
+// For non-uniform matrices (rare — e.g. anisotropic scale on highlight
+// overlays), the circular shading approximates the intended ellipse using
+// sqrt(|det|) as a single radius scale. PDF Type 3 cannot represent true
+// ellipses via /Coords alone; this is the best fidelity available without
+// reintroducing /Matrix (and its cross-viewer ambiguity).
+//
+// The /Function entry is stored as a pdfRef to the function object already
+// registered in doc.objects.
+//
+// Returns nil if grad is an unsupported type.
 // The returned *pdfObject's Num is 0; ensurePatternResource assigns a real number.
-func gradientToShadingObject(grad svgGradient, fnRef pdfRef) *pdfObject {
+func gradientToShadingObject(grad svgGradient, fnRef pdfRef, m svgMatrix) *pdfObject {
 	shading := pdfDict{
 		"/ColorSpace": pdfName("/DeviceRGB"),
 		"/Extend":     pdfArray{true, true},
@@ -211,15 +258,25 @@ func gradientToShadingObject(grad svgGradient, fnRef pdfRef) *pdfObject {
 	switch g := grad.(type) {
 	case *svgLinearGradient:
 		shading["/ShadingType"] = 2
-		shading["/Coords"] = pdfArray{g.x1, g.y1, g.x2, g.y2}
+		x1, y1 := transformPoint(m, g.x1, g.y1)
+		x2, y2 := transformPoint(m, g.x2, g.y2)
+		shading["/Coords"] = pdfArray{x1, y1, x2, y2}
 	case *svgRadialGradient:
 		shading["/ShadingType"] = 3
+		fx, fy := transformPoint(m, g.fx, g.fy)
+		cx, cy := transformPoint(m, g.cx, g.cy)
+		rScale := math.Sqrt(math.Abs(m[0]*m[3] - m[1]*m[2]))
 		// Coords: [fx fy 0 cx cy r] — focal point as inner circle with radius 0.
-		shading["/Coords"] = pdfArray{g.fx, g.fy, 0.0, g.cx, g.cy, g.r}
+		shading["/Coords"] = pdfArray{fx, fy, 0.0, cx, cy, g.r * rScale}
 	default:
 		return nil
 	}
 	return &pdfObject{Value: shading}
+}
+
+// transformPoint applies a 2x3 affine matrix (a b c d e f form) to (x, y).
+func transformPoint(m svgMatrix, x, y float64) (float64, float64) {
+	return m[0]*x + m[2]*y + m[4], m[1]*x + m[3]*y + m[5]
 }
 
 // exponentialFunctionDict returns an inline pdfDict (not wrapped in pdfObject) for a

@@ -304,6 +304,70 @@ func TestRenderSVG_GroupOpacityNoDoubleSlash(t *testing.T) {
 	}
 }
 
+// Regression: PDF Type 2 (shading) pattern /Matrix maps pattern coordinates to
+// the page's *initial* user space, not to the user space at scn time
+// (ISO 32000-1 §8.7.4.5.1). The SVG-to-page CTM emitted via `cm` does NOT
+// apply to a Type 2 pattern's coordinate mapping. So /Matrix (or the baked
+// /Coords) has to encode the full path from gradient coords → device.
+//
+// Bug symptom (before fix): for an SVG rendered into a non-origin rectangle,
+// the gradient appeared at gradient coords interpreted as DEVICE pixels —
+// typically way off-screen — and the visible shape was painted entirely with
+// the extended last-stop colour (apparent "no gradient"). The Aspose logo's
+// blades exhibited this: each blade rendered as flat colour instead of a
+// radial transition.
+func TestRenderSVG_RadialGradient_CTMBakedIntoCoords(t *testing.T) {
+	// Gradient centered at user-space (50, 50) inside a 100x100 viewBox.
+	// Render into a 200x200 rectangle anchored at PDF (100, 500). Expected:
+	// the emitted /Coords should reflect the SVG-to-page transform — center
+	// at PDF (100 + scale*50, 700 - scale*50) where scale = 200/100 = 2, so
+	// center = (200, 600); radius = 40 * scale = 80.
+	svg, err := parseSVGBytes([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+		<radialGradient id="g" cx="50" cy="50" r="40" gradientUnits="userSpaceOnUse">
+			<stop offset="0" stop-color="white"/>
+			<stop offset="1" stop-color="blue"/>
+		</radialGradient>
+		<rect x="0" y="0" width="100" height="100" fill="url(#g)"/>
+	</svg>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := NewDocumentFromFormat(PageFormatA4)
+	page, _ := doc.Page(1)
+	if err := renderSVG(page, svg, Rectangle{LLX: 100, LLY: 500, URX: 300, URY: 700}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Locate the Pattern → Shading → /Coords array in doc.objects.
+	var coords pdfArray
+	for _, obj := range doc.objects {
+		dict, ok := obj.Value.(pdfDict)
+		if !ok {
+			continue
+		}
+		if st, _ := dict["/ShadingType"]; st != 3 {
+			continue
+		}
+		coords, _ = dict["/Coords"].(pdfArray)
+		break
+	}
+	if coords == nil || len(coords) != 6 {
+		t.Fatalf("expected 6-element /Coords array, got %v", coords)
+	}
+	const tol = 0.01
+	want := []float64{200, 600, 0, 200, 600, 80}
+	for i, w := range want {
+		got, err := toFloat(coords[i])
+		if err != nil {
+			t.Fatalf("/Coords[%d] not numeric: %v", i, coords[i])
+		}
+		if got < w-tol || got > w+tol {
+			t.Errorf("/Coords[%d] = %g, want %g (±%g) — CTM not folded into pattern coords",
+				i, got, w, tol)
+		}
+	}
+}
+
 // PDF spec §7.10.4 requires /Bounds in a Type 3 stitching function to be
 // strictly increasing. SVG allows duplicate stop offsets (sharp color
 // transitions); we must bump duplicates by epsilon to satisfy the spec.

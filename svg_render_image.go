@@ -9,7 +9,10 @@ import (
 )
 
 // renderSVGImage emits the PDF operators to draw an embedded raster image.
-func renderSVGImage(buf *bytes.Buffer, p *Page, svg *SVG, im *svgImage) {
+// ctm is the cumulative SVG-to-page transform (not currently used — image fill
+// has no gradient path — but kept for signature symmetry with other renderers).
+func renderSVGImage(buf *bytes.Buffer, p *Page, svg *SVG, im *svgImage, ctm svgMatrix) {
+	_ = ctm
 	if !im.style.display || im.w <= 0 || im.h <= 0 || len(im.data) == 0 {
 		return
 	}
@@ -71,6 +74,7 @@ func renderSVGImage(buf *bytes.Buffer, p *Page, svg *SVG, im *svgImage) {
 	applyClipPath(buf, p, svg, im.style)
 	applyMask(buf, p, svg, im.style, im)
 	applySVGFilter(buf, p, svg, im.style, im)
+	_ = applyGroupOpacity(buf, p, im.style)
 	// Place the unit-square image XObject: [renderW 0 0 renderH originX originY] cm
 	fmt.Fprintf(buf, "%s 0 0 %s %s %s cm\n",
 		formatFloat(renderW),

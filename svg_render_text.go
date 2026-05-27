@@ -9,10 +9,11 @@ import (
 
 // renderSVGText emits a PDF text block for each run in the <text> element.
 // Each run is wrapped in its own BT/ET block using Tm for point-positioned text.
-func renderSVGText(buf *bytes.Buffer, p *Page, svg *SVG, t *svgText) {
+func renderSVGText(buf *bytes.Buffer, p *Page, svg *SVG, t *svgText, ctm svgMatrix) {
 	if !t.style.display || len(t.runs) == 0 {
 		return
 	}
+	nodeCTM := composeCTM(ctm, t.transform)
 	buf.WriteString("q\n")
 	if t.transform != nil {
 		writeCMOperator(buf, *t.transform)
@@ -20,12 +21,13 @@ func renderSVGText(buf *bytes.Buffer, p *Page, svg *SVG, t *svgText) {
 	applyClipPath(buf, p, svg, t.style)
 	applyMask(buf, p, svg, t.style, t)
 	applySVGFilter(buf, p, svg, t.style, t)
+	_ = applyGroupOpacity(buf, p, t.style)
 	for _, run := range t.runs {
 		font := resolveSVGFont(p.doc, run.style)
 		if font == nil {
 			continue
 		}
-		emitSVGTextRun(buf, p, svg, run, font)
+		emitSVGTextRun(buf, p, svg, run, font, nodeCTM)
 	}
 	buf.WriteString("Q\n")
 }
@@ -44,7 +46,7 @@ func resolveSVGFont(doc *Document, style svgStyle) Font {
 // emitSVGTextRun writes a PDF BT/ET block for a single text run.
 // Uses Tm with matrix [1 0 0 -1 x y] to place text at (x, y) in SVG space
 // while compensating for the outer CTM's Y-flip.
-func emitSVGTextRun(buf *bytes.Buffer, p *Page, svg *SVG, run svgTextRun, font Font) {
+func emitSVGTextRun(buf *bytes.Buffer, p *Page, svg *SVG, run svgTextRun, font Font, ctm svgMatrix) {
 	fontSize := run.style.fontSize
 	if fontSize <= 0 {
 		fontSize = 16
@@ -74,7 +76,7 @@ func emitSVGTextRun(buf *bytes.Buffer, p *Page, svg *SVG, run svgTextRun, font F
 	fmt.Fprintf(buf, "%s %s Tf\n", resName, formatFloat(fontSize))
 
 	// Fill: gradient first (Phase 3a /Pattern cs path), then plain color.
-	if name := resolveGradientFill(p, svg, run.style.fill, nil); name != "" {
+	if name := resolveGradientFill(p, svg, run.style.fill, nil, ctm); name != "" {
 		fmt.Fprintf(buf, "/Pattern cs\n%s scn\n", name)
 	} else if run.style.fill != nil && run.style.fill.color != nil {
 		c := run.style.fill.color

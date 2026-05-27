@@ -415,12 +415,15 @@ func decomposeArcToBeziers(x1, y1, x2, y2, rx, ry, xRotDeg float64, large, sweep
 		segs = 1
 	}
 	step := sweepA / float64(segs)
+	// Goldapp/standard cubic-Bezier approximation of a circular arc on the unit
+	// circle: control-point distance from each endpoint along the tangent is
+	// k = (4/3) * tan(step/4). For a 90° arc this gives ~0.5523 (the well-known
+	// kappa). The sign of `step` flips the tangent direction for CW vs CCW.
+	alpha := (4.0 / 3.0) * math.Tan(step/4)
 	out := make([]svgPathOp, 0, segs)
 	a := startA
 	for k := 0; k < segs; k++ {
 		b := a + step
-		t := math.Tan(step / 4)
-		alpha := math.Sin(step) * (math.Sqrt(4+3*t*t) - 1) / 3
 		ax, ay := math.Cos(a), math.Sin(a)
 		bx, by := math.Cos(b), math.Sin(b)
 		c1x := ax - alpha*ay

@@ -842,7 +842,11 @@ func (p *Page) ensurePatternResource(grad svgGradient, matrix svgMatrix) (string
 	p.doc.objects[fnID] = fnObj
 
 	// --- Build and register the /Shading indirect object. ---
-	shadingObj := gradientToShadingObject(grad, pdfRef{Num: fnID})
+	// We bake `matrix` (gradientUnits + gradientTransform) directly into the
+	// shading's /Coords and omit /Matrix on the parent /Pattern dict — this
+	// avoids cross-viewer ambiguity around how /Matrix composes with the CTM
+	// for Type 3 shadings. See gradientToShadingObject for the full rationale.
+	shadingObj := gradientToShadingObject(grad, pdfRef{Num: fnID}, matrix)
 	if shadingObj == nil {
 		return "", fmt.Errorf("ensurePatternResource: unsupported gradient type %T", grad)
 	}
@@ -852,11 +856,15 @@ func (p *Page) ensurePatternResource(grad svgGradient, matrix svgMatrix) (string
 	p.doc.objects[shadingID] = shadingObj
 
 	// --- Build and register the /Pattern (shading pattern, PatternType 2) indirect object. ---
+	// /Matrix is identity because gradientUnits + gradientTransform are already
+	// baked into the shading's /Coords. We still emit identity explicitly: PDF
+	// spec lists /Matrix as optional with identity default, but some viewers
+	// behave differently when it's omitted, and "[1 0 0 1 0 0]" is unambiguous.
 	patternDict := pdfDict{
 		"/Type":        pdfName("/Pattern"),
 		"/PatternType": 2,
 		"/Shading":     pdfRef{Num: shadingID},
-		"/Matrix":      pdfArray{matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]},
+		"/Matrix":      pdfArray{1.0, 0.0, 0.0, 1.0, 0.0, 0.0},
 	}
 	patternID := p.doc.nextID
 	p.doc.nextID++

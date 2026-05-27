@@ -84,7 +84,3 @@ func TestComputeViewBoxMatrix_None_Stretch(t *testing.T) {
 		t.Errorf("none: (100,50) → (%g, %g) want (200, 0)", x1, y1)
 	}
 }
-
-func transformPoint(m svgMatrix, x, y float64) (float64, float64) {
-	return m[0]*x + m[2]*y + m[4], m[1]*x + m[3]*y + m[5]
-}

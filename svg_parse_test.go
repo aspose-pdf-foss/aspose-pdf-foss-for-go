@@ -3,6 +3,7 @@
 package asposepdf
 
 import (
+	"math"
 	"os"
 	"testing"
 )
@@ -115,6 +116,41 @@ func TestParseSVG_GroupInheritance(t *testing.T) {
 	}
 	if innerRect.style.stroke == nil || innerRect.style.stroke.color == nil || innerRect.style.stroke.color.B != 1 {
 		t.Errorf("rect should inherit stroke=blue, got %+v", innerRect.style.stroke)
+	}
+}
+
+// Regression: SVG/CSS opacity creates an implicit transparency group at every
+// nesting level — a parent's 0.6 with a child's 0.4 composites to 0.24, not 0.4.
+// Parsing must multiply child opacity into the inherited cumulative parent value.
+// Bug symptom (before fix): per-path opacity was overwritten by inheritance, then
+// also ignored at render time, so highlight overlays in the Aspose logo rendered
+// at the group's opacity (0.6) instead of the intended 0.6 × 0.4 = 0.24, washing
+// out the underlying gradients.
+func TestParseSVG_OpacityCascadeMultiplies(t *testing.T) {
+	doc := `<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g opacity="0.6">
+    <path d="M0 0 L 10 10" opacity="0.4"/>
+  </g>
+</svg>`
+	svg, err := parseSVGBytes([]byte(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer, _ := svg.root.children[0].(*svgGroup)
+	if outer == nil {
+		t.Fatal("expected <g>")
+	}
+	if math.Abs(outer.style.opacity-0.6) > 1e-9 {
+		t.Errorf("outer opacity = %g, want 0.6", outer.style.opacity)
+	}
+	p, _ := outer.children[0].(*svgPath)
+	if p == nil {
+		t.Fatal("expected <path>")
+	}
+	want := 0.6 * 0.4 // = 0.24
+	if math.Abs(p.style.opacity-want) > 1e-9 {
+		t.Errorf("path cumulative opacity = %g, want %g (0.6 × 0.4)", p.style.opacity, want)
 	}
 }
 

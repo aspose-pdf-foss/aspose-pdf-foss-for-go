@@ -115,6 +115,42 @@ func TestParseSVGPathData_Arc(t *testing.T) {
 	}
 }
 
+// Regression: the cubic-Bezier approximation of a 90° circular arc must
+// place its control points at the standard kappa distance k = (4/3)·tan(π/8)
+// ≈ 0.5523·r from the endpoints. An older implementation used a different
+// formula that under-estimated by ~32%, producing visibly pinched curves on
+// any path with elliptical-arc commands (e.g. the Aspose logo's "O").
+func TestDecomposeArc_90Degree_KappaControlDistance(t *testing.T) {
+	// 90° arc from (10, 0) to (0, 10) on unit-scaled radius 10, no rotation,
+	// large=0, sweep=1 (counter-clockwise short arc).
+	ops := decomposeArcToBeziers(10, 0, 0, 10, 10, 10, 0, false, true)
+	if len(ops) != 1 {
+		t.Fatalf("90° arc should decompose to exactly 1 cubic, got %d", len(ops))
+	}
+	c := ops[0]
+	if c.kind != 'C' {
+		t.Fatalf("op kind = %c, want C", c.kind)
+	}
+	// Tangent at (10, 0) on a circle centered at (0, 0) going CCW is (0, 1).
+	// Control point 1 should be at (10, 0) + k*(0, 1) = (10, k*10) for k ≈ 0.5523.
+	expectedK := (4.0 / 3.0) * math.Tan(math.Pi/8) // ≈ 0.5522847
+	c1x, c1y := c.args[0], c.args[1]
+	if math.Abs(c1x-10) > 1e-6 {
+		t.Errorf("control1 x = %g, want 10", c1x)
+	}
+	if math.Abs(c1y-10*expectedK) > 1e-4 {
+		t.Errorf("control1 y = %g, want %g (kappa*r)", c1y, 10*expectedK)
+	}
+	// Tangent at (0, 10) is (-1, 0). Control point 2 should be at (0, 10) - k*(-1, 0) = (k*10, 10).
+	c2x, c2y := c.args[2], c.args[3]
+	if math.Abs(c2x-10*expectedK) > 1e-4 {
+		t.Errorf("control2 x = %g, want %g (kappa*r)", c2x, 10*expectedK)
+	}
+	if math.Abs(c2y-10) > 1e-6 {
+		t.Errorf("control2 y = %g, want 10", c2y)
+	}
+}
+
 func TestParseSVGPathData_Malformed(t *testing.T) {
 	_, err := parseSVGPathData("M 0")
 	if err == nil {

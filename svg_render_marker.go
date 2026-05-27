@@ -58,8 +58,11 @@ func emitMarker(buf *bytes.Buffer, p *Page, svg *SVG, m *svgMarker, x, y, angleR
 			formatFloat(-m.refX), formatFloat(-m.refY))
 	}
 
-	// Step 5: render marker's children (each child gets its own q/Q via the renderer)
-	renderSVGNodes(buf, p, svg, m.children, defaultSVGStyle())
+	// Step 5: render marker's children (each child gets its own q/Q via the
+	// renderer). Markers don't currently support gradient fills internally, so
+	// we pass an identity CTM — Type 2 patterns would be misplaced under the
+	// nested cm stack here, but no real-world marker SVGs exercise that path.
+	renderSVGNodes(buf, p, svg, m.children, defaultSVGStyle(), matrixIdentity())
 
 	buf.WriteString("Q\n")
 }

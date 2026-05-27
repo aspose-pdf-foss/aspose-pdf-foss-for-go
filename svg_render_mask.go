@@ -21,9 +21,11 @@ func buildMaskFormXObject(p *Page, svg *SVG, mask *svgMask, bbox Rectangle) (pdf
 		return pdfRef{}, nil // caller treats Num==0 as "no mask"
 	}
 
-	// Render mask children into a content stream buffer.
+	// Render mask children into a content stream buffer. Mask children live in
+	// their own Form XObject with the page's resources shared; gradient fills
+	// would need careful CTM bookkeeping which mask paths don't exercise today.
 	var buf bytes.Buffer
-	renderSVGNodes(&buf, p, svg, mask.children, defaultSVGStyle())
+	renderSVGNodes(&buf, p, svg, mask.children, defaultSVGStyle(), matrixIdentity())
 
 	// Build the /Resources entry: share page resources so the mask content can
 	// reference fonts, patterns, and XObjects already registered on the page.

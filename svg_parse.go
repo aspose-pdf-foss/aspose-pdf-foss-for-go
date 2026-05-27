@@ -266,7 +266,12 @@ func applySingleSVGStyleProp(s *svgStyle, prop, val string) {
 		}
 	case "opacity":
 		if v, ok := parseSVGNumber(val); ok {
-			s.opacity = clamp01(v)
+			// SVG/CSS semantics: opacity creates an implicit transparency
+			// group, so a parent's 0.6 with a child's 0.4 composites to 0.24
+			// in device space, not 0.4. Multiplying child's value into the
+			// inherited (cumulative) parent value makes style.opacity the
+			// final effective alpha that a single /GS can apply.
+			s.opacity = clamp01(s.opacity * v)
 		}
 	case "fill-opacity":
 		if v, ok := parseSVGNumber(val); ok {
