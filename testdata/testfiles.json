@@ -49,7 +49,7 @@
   "TestComboBoxFieldRoundTrip":       [["PdfWithAcroForm.pdf"]],
   "TestListBoxFieldRead":             [["PdfWithAcroForm.pdf"]],
   "TestListBoxFieldRoundTrip":        [["PdfWithAcroForm.pdf"]],
-  "TestFormSetValueAutoNeedAppearances": [["PdfWithAcroForm.pdf"]],
+  "TestFormSetValueRegeneratesAP": [["PdfWithAcroForm.pdf"]],
   "TestFormManualNeedAppearancesToggle": [["PdfWithAcroForm.pdf"]],
   "TestFormFillIntegration":            [["PdfWithAcroForm.pdf"]],
   "TestFormCyrillicRoundTrip":          [["PdfWithAcroForm.pdf"]],

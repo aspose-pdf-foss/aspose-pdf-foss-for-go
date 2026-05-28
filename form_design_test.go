@@ -434,13 +434,30 @@ func TestFormRemoveFieldRadioCascade(t *testing.T) {
 	}
 }
 
-func TestFormAddXxxAutoSetsNeedAppearances(t *testing.T) {
+// TestFormAddXxxGeneratesAP verifies that AddTextField writes a real
+// /AP/N Form XObject on the widget instead of relying on viewer-side
+// /NeedAppearances regeneration. /NeedAppearances stays at its default
+// (false) so opening the file in Acrobat doesn't mark it as modified.
+func TestFormAddXxxGeneratesAP(t *testing.T) {
 	doc := pdf.NewDocument(595, 842)
-	if _, err := doc.Form().AddTextField(1, pdf.Rectangle{LLX: 50, LLY: 700, URX: 545, URY: 730}, "x"); err != nil {
+	tf, err := doc.Form().AddTextField(1, pdf.Rectangle{LLX: 50, LLY: 700, URX: 545, URY: 730}, "x")
+	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if !doc.Form().NeedAppearances() {
-		t.Error("/NeedAppearances not auto-set after AddTextField")
+	tf.SetValue("hello")
+
+	var buf bytes.Buffer
+	doc.WriteTo(&buf)
+	out := buf.Bytes()
+
+	if !bytes.Contains(out, []byte("/AP")) {
+		t.Error("expected /AP entry on widget after AddTextField")
+	}
+	if !bytes.Contains(out, []byte("/Subtype /Form")) {
+		t.Error("expected at least one Form XObject in output (widget /AP/N)")
+	}
+	if doc.Form().NeedAppearances() {
+		t.Error("/NeedAppearances should stay false when /AP is pre-generated")
 	}
 }
 

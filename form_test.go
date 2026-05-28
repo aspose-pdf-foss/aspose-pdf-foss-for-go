@@ -283,19 +283,28 @@ func TestListBoxFieldRoundTrip(t *testing.T) {
 	}
 }
 
-func TestFormSetValueAutoNeedAppearances(t *testing.T) {
+// TestFormSetValueRegeneratesAP verifies that mutating a field's value
+// rewrites the widget's /AP/N appearance stream so the new value is
+// visible in any viewer (Acrobat, MuPDF, Poppler, browser PDFs)
+// without relying on /NeedAppearances=true. /NeedAppearances=true causes
+// Acrobat to mark the file as modified on open even when the user
+// didn't touch the form — we avoid that by emitting real /AP streams.
+func TestFormSetValueRegeneratesAP(t *testing.T) {
 	src := testFile(t)
 	doc, _ := pdf.Open(src)
 	tf := doc.Form().Field("textField").(*pdf.TextBoxField)
-	tf.SetValue("triggers needappearances")
+	tf.SetValue("triggers ap regeneration")
 
 	var buf bytes.Buffer
 	doc.WriteTo(&buf)
-	if !bytes.Contains(buf.Bytes(), []byte("/NeedAppearances")) {
-		t.Error("/NeedAppearances not present in saved bytes after SetValue")
+	out := buf.Bytes()
+
+	if !bytes.Contains(out, []byte("/Subtype /Form")) {
+		t.Error("expected a Form XObject (regenerated /AP/N) in saved bytes")
 	}
-	if !bytes.Contains(buf.Bytes(), []byte("/NeedAppearances true")) {
-		t.Error("/NeedAppearances not set to true after SetValue")
+	// The new value should appear in a content stream (rendered via Tj).
+	if !bytes.Contains(out, []byte("triggers ap regeneration")) {
+		t.Error("expected new value to be embedded in a content stream after SetValue")
 	}
 }
 

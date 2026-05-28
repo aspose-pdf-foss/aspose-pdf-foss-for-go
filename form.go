@@ -237,13 +237,18 @@ func isASCII(s string) bool {
 	return true
 }
 
-// noteFormMutated is invoked from every field-value setter. It sets
-// /AcroForm/NeedAppearances=true so viewers regenerate the cached /AP
-// stream on display.
+// noteFormMutated is invoked from every field-value setter. It rebuilds
+// the /AP appearance stream for each widget belonging to n so the on-page
+// chrome stays in sync with the new value. We no longer set
+// /AcroForm/NeedAppearances=true — viewers that honour /AP (Acrobat,
+// Foxit, browser PDF viewers, MuPDF, Poppler, …) use the freshly
+// generated stream directly, and NeedAppearances=true had the
+// side-effect of marking the document as modified on open in Acrobat
+// (the "Save changes?" prompt on close even when the user never edited
+// the form). Callers who still want viewer-side regeneration can opt
+// in via Form.SetNeedAppearances(true).
 func noteFormMutated(n *fieldNode) {
-	if n != nil && n.form != nil {
-		n.form.noteFormMutatedInForm()
-	}
+	regenerateFieldAppearance(n)
 }
 
 // NeedAppearances reports whether /AcroForm/NeedAppearances is true,
@@ -257,9 +262,13 @@ func (f *Form) NeedAppearances() bool {
 	return ok && v
 }
 
-// SetNeedAppearances toggles /AcroForm/NeedAppearances. Any value-
-// changing call (SetValue, SetChecked, SetSelected) auto-sets this to
-// true; an explicit call here is needed only to disable the flag.
+// SetNeedAppearances toggles /AcroForm/NeedAppearances. When set, viewers
+// regenerate the /AP appearance stream on display instead of trusting the
+// pre-generated one (which Acrobat treats as a document modification).
+// The library auto-builds /AP for every field on creation and on every
+// value mutation, so the default (false) is correct for nearly all cases;
+// callers only need this for niche workflows where viewer-side
+// regeneration is required.
 //
 // On a Document with no /AcroForm dict, calling this with true creates
 // a new /AcroForm dict in the catalog so the flag is preserved on Save.
@@ -290,15 +299,14 @@ func (f *Form) ensureRoot() {
 	f.root = root
 }
 
-// noteFormMutatedInForm sets /NeedAppearances=true on the form's root.
-// Different name from the package-level noteFormMutated to avoid name
-// collision; the package-level function remains as the call site for
-// concrete-type setters.
+// noteFormMutatedInForm is retained as a structural hook for AddXxx
+// methods: it ensures /AcroForm exists, which is needed so the new
+// field gets serialised. Setting /NeedAppearances=true here used to
+// kick viewers into regenerating /AP, but that was a workaround for
+// missing widget appearances. Now that every AddXxx writes a real
+// /AP stream, the flag stays off by default.
 func (f *Form) noteFormMutatedInForm() {
 	f.ensureRoot()
-	if f.root != nil {
-		f.root["/NeedAppearances"] = true
-	}
 }
 
 // AddTextField creates a single-line text input on pageNum with the
@@ -341,6 +349,7 @@ func (f *Form) AddTextField(pageNum int, rect Rectangle, name string) (*TextBoxF
 
 	f.rebuildFieldCache()
 	f.noteFormMutatedInForm()
+	regenerateWidgetAppearance(f, dict)
 
 	return f.cache[name].(*TextBoxField), nil
 }
@@ -439,11 +448,13 @@ func (f *Form) AddCheckbox(pageNum int, rect Rectangle, name string) (*CheckboxF
 		return nil, err
 	}
 
-	// Empty placeholder XObject refs for /Off and /Yes states. Viewers
-	// regenerate visible appearances when /NeedAppearances=true.
+	// Seed /AP/N with the state keys so regenerateWidgetAppearance can
+	// discover the export name ("Yes" by default) from the dict; the
+	// dict values are sentinel placeholders that the regenerator will
+	// overwrite with real Form XObjects on the same line.
 	apN := pdfDict{
-		"/Off": placeholderXObjectRef(f.doc),
-		"/Yes": placeholderXObjectRef(f.doc),
+		"/Off": pdfDict{},
+		"/Yes": pdfDict{},
 	}
 
 	dict := pdfDict{
@@ -467,29 +478,9 @@ func (f *Form) AddCheckbox(pageNum int, rect Rectangle, name string) (*CheckboxF
 	appendAnnotToPage(f.doc.objects, page.pageObj(), ref)
 	f.rebuildFieldCache()
 	f.noteFormMutatedInForm()
+	regenerateWidgetAppearance(f, dict)
 
 	return f.cache[name].(*CheckboxField), nil
-}
-
-// placeholderXObjectRef creates an empty Form XObject and returns its
-// reference. Used for widget /AP/N placeholder entries — viewers
-// regenerate the actual visual at display time when /NeedAppearances
-// is true.
-func placeholderXObjectRef(doc *Document) pdfRef {
-	stream := &pdfStream{
-		Dict: pdfDict{
-			"/Type":      pdfName("/XObject"),
-			"/Subtype":   pdfName("/Form"),
-			"/BBox":      pdfArray{0, 0, 0, 0},
-			"/Resources": pdfDict{},
-		},
-		Data:    []byte{},
-		Decoded: true,
-	}
-	id := doc.nextID
-	doc.nextID++
-	doc.objects[id] = &pdfObject{Num: id, Value: stream}
-	return pdfRef{Num: id}
 }
 
 // AddComboBox creates a single-select dropdown choice field. The
@@ -531,6 +522,7 @@ func (f *Form) AddComboBox(pageNum int, rect Rectangle, name string, options []C
 	appendAnnotToPage(f.doc.objects, page.pageObj(), ref)
 	f.rebuildFieldCache()
 	f.noteFormMutatedInForm()
+	regenerateWidgetAppearance(f, dict)
 
 	return f.cache[name].(*ComboBoxField), nil
 }
@@ -572,6 +564,7 @@ func (f *Form) AddListBox(pageNum int, rect Rectangle, name string, options []Ch
 	appendAnnotToPage(f.doc.objects, page.pageObj(), ref)
 	f.rebuildFieldCache()
 	f.noteFormMutatedInForm()
+	regenerateWidgetAppearance(f, dict)
 
 	return f.cache[name].(*ListBoxField), nil
 }
@@ -608,6 +601,7 @@ func (f *Form) AddPushButton(pageNum int, rect Rectangle, name string, caption s
 	appendAnnotToPage(f.doc.objects, page.pageObj(), ref)
 	f.rebuildFieldCache()
 	f.noteFormMutatedInForm()
+	regenerateWidgetAppearance(f, dict)
 
 	return f.cache[name].(*ButtonField), nil
 }
@@ -657,9 +651,12 @@ func (f *Form) AddRadioGroup(name string, items []RadioItem) (*RadioButtonField,
 		if err != nil {
 			return nil, err
 		}
+		// Seed /AP/N with the state-name keys (sentinel values overwritten
+		// during regenerateWidgetAppearance below) so the regenerator
+		// reads the per-item export name as the on-state.
 		apN := pdfDict{
-			"/Off":          placeholderXObjectRef(f.doc),
-			"/" + it.Export: placeholderXObjectRef(f.doc),
+			"/Off":          pdfDict{},
+			"/" + it.Export: pdfDict{},
 		}
 		widgetDict := pdfDict{
 			"/Type":    pdfName("/Annot"),
@@ -682,6 +679,10 @@ func (f *Form) AddRadioGroup(name string, items []RadioItem) (*RadioButtonField,
 
 		// Append widget ref to its page's /Annots.
 		appendAnnotToPage(f.doc.objects, page.pageObj(), widgetRef)
+
+		// Build the radio kid's /AP/N streams immediately so the field is
+		// fully renderable in MuPDF/Acrobat without /NeedAppearances=true.
+		regenerateWidgetAppearance(f, widgetDict)
 	}
 
 	f.appendToFields(parentRef)
