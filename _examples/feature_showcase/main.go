@@ -108,14 +108,6 @@ func main() {
 	addPageText(doc, textPage)
 	addPageImage(imagePage)
 	addFormFields(doc, formPage)
-	// AcroForm widgets in this library are emitted without /AP appearance
-	// streams; setting /AcroForm/NeedAppearances=true normally tells viewers
-	// to regenerate them on display, but Acrobat then treats that
-	// regeneration as a modification and asks to save on close. We suppress
-	// the flag here — the rectangles addFormFields draws in the content
-	// stream keep the form visible, and most viewers still render the field
-	// /V text on top. Trade-off: some viewers will show empty widgets.
-	doc.Form().SetNeedAppearances(false)
 	addAnnotations(annotPage)
 	addRedactionDemo(doc, redactPage)
 	addRestaurantBill(billPage)
@@ -531,25 +523,13 @@ func addFormFields(doc *pdf.Document, page *pdf.Page) {
 		},
 		pdf.Rectangle{LLX: 30, LLY: size.Height - 145, URX: size.Width - 30, URY: size.Height - 115}))
 
-	// Each widget below is also accompanied by a thin decoration rectangle
-	// drawn in the content stream. PDF viewers regenerate widget /AP from
-	// /AcroForm/NeedAppearances=true; the decoration is a belt-and-braces
-	// fallback so the form's structure stays visible even when a viewer
-	// doesn't honour the flag.
-	decoStroke := pdf.LineStyle{Color: &pdf.Color{R: 0.7, G: 0.7, B: 0.75, A: 1}, Width: 0.6}
-	decoFill := pdf.ShapeStyle{LineStyle: decoStroke, FillColor: &pdf.Color{R: 0.97, G: 0.97, B: 0.99, A: 1}}
-	deco := func(rect pdf.Rectangle) {
-		mustVector(page.DrawRectangle(rect, decoFill))
-	}
-	circleDeco := func(p pdf.Point, r float64) {
-		mustVector(page.DrawCircle(p, r, decoFill))
-	}
-
 	// Row 1: text field. All rows shifted ~20pt down from the previous
 	// layout so the "Also available" note above has 2 lines of breathing room.
+	// Widget chrome (border, fill, dropdown chevron, selection highlight)
+	// now ships in each field's pre-generated /AP/N appearance stream, so
+	// no extra content-stream decorations are needed here.
 	addLabel("Full name:", 670)
 	tfRect := pdf.Rectangle{LLX: 200, LLY: 670, URX: 450, URY: 690}
-	deco(tfRect)
 	tb, err := form.AddTextField(pageNum, tfRect, "FullName")
 	if err != nil {
 		log.Fatalf("text field: %v", err)
@@ -559,7 +539,6 @@ func addFormFields(doc *pdf.Document, page *pdf.Page) {
 	// Row 2: checkbox.
 	addLabel("Subscribe:", 630)
 	cbRect := pdf.Rectangle{LLX: 200, LLY: 630, URX: 218, URY: 648}
-	deco(cbRect)
 	cb, err := form.AddCheckbox(pageNum, cbRect, "Subscribe")
 	if err != nil {
 		log.Fatalf("checkbox: %v", err)
@@ -572,10 +551,6 @@ func addFormFields(doc *pdf.Document, page *pdf.Page) {
 		{LLX: 200, LLY: 590, URX: 218, URY: 608},
 		{LLX: 290, LLY: 590, URX: 308, URY: 608},
 		{LLX: 380, LLY: 590, URX: 398, URY: 608},
-	}
-	for _, r := range rbRects {
-		// Radio buttons are drawn as circles to differentiate from checkboxes.
-		circleDeco(pdf.Point{X: (r.LLX + r.URX) / 2, Y: (r.LLY + r.URY) / 2}, (r.URX-r.LLX)/2)
 	}
 	rb, err := form.AddRadioGroup("Plan", []pdf.RadioItem{
 		{PageNum: pageNum, Rect: rbRects[0], Export: "Basic"},
@@ -593,18 +568,9 @@ func addFormFields(doc *pdf.Document, page *pdf.Page) {
 	mustText(page.AddText("Pro", radioLabel, pdf.Rectangle{LLX: 312, LLY: 592, URX: 370, URY: 608}))
 	mustText(page.AddText("Enterprise", radioLabel, pdf.Rectangle{LLX: 402, LLY: 592, URX: 480, URY: 608}))
 
-	// Row 4: combo box.
+	// Row 4: combo box. The widget's /AP/N draws its own chevron.
 	addLabel("Country:", 550)
 	cbxRect := pdf.Rectangle{LLX: 200, LLY: 550, URX: 350, URY: 570}
-	deco(cbxRect)
-	// Tiny downward-pointing triangle drawn with DrawPolygon, since the
-	// Unicode arrow glyph (U+25BE) isn't in WinAnsi.
-	{
-		cx, cy := cbxRect.URX-10, (cbxRect.LLY+cbxRect.URY)/2
-		mustVector(page.DrawPolygon([]pdf.Point{
-			{X: cx - 4, Y: cy + 2}, {X: cx + 4, Y: cy + 2}, {X: cx, Y: cy - 3},
-		}, pdf.ShapeStyle{FillColor: &pdf.Color{R: 0.4, G: 0.4, B: 0.45, A: 1}}))
-	}
 	combo, err := form.AddComboBox(pageNum, cbxRect, "Country",
 		[]pdf.ChoiceOption{
 			{Value: "United States", Export: "US"},
@@ -620,7 +586,6 @@ func addFormFields(doc *pdf.Document, page *pdf.Page) {
 	// Row 5: list box.
 	addLabel("Interests:", 490)
 	lbRect := pdf.Rectangle{LLX: 200, LLY: 410, URX: 350, URY: 510}
-	deco(lbRect)
 	lb, err := form.AddListBox(pageNum, lbRect, "Interests",
 		[]pdf.ChoiceOption{
 			{Value: "PDF Engineering", Export: "pdf"},
