@@ -173,6 +173,15 @@ Pure Go library. No external dependencies. All code is in the root package `aspo
 - `(*Document).ClearMetadata()` — removes the Info dictionary; applied on Save/WriteTo
 - `Metadata` struct — Title, Author, Subject, Keywords, Creator, Producer, CreationDate, ModDate, Custom map[string]string
 
+**`xmp.go`** — XMP metadata (the `/Catalog/Metadata` RDF/XML packet, ISO 32000-1 §14.3.2)
+- `(*Document).XMP() (XMPMetadata, error)` — parse the XMP packet; zero value (`IsEmpty()`) when absent
+- `(*Document).SetXMP(meta XMPMetadata) error` — serialise + store a standard packet (uncompressed `/Type /Metadata /Subtype /XML`); reuses the existing object on update
+- `(*Document).ClearXMP()` — remove `/Catalog/Metadata` (orphans the stream; `RemoveUnusedObjects` reclaims it)
+- `(*Document).XMPRaw() ([]byte, error)` / `(*Document).SetXMPRaw([]byte) error` — raw packet bytes escape hatch
+- `(*Document).SyncInfoToXMP() error` — build an XMP packet from the current `/Info` dict so both metadata stores agree (PDF date → ISO 8601)
+- `XMPMetadata` struct — Title (dc:title), Authors []string (dc:creator Seq), Description (dc:description), Keywords []string (dc:subject Bag), CreatorTool (xmp:CreatorTool), Producer (pdf:Producer), CreateDate/ModifyDate/MetadataDate (xmp:*, ISO 8601 strings), Custom []XMPProperty
+- `XMPProperty` struct — Namespace, Prefix, Name, Value for arbitrary simple namespaced properties. Parser handles both attribute and element forms and rdf:Alt/Seq/Bag containers; `encoding/xml` does not surface the original prefix so a custom property's Prefix is synthesised on read (Namespace/Name/Value round-trip)
+
 **`encrypt.go` / `decrypt.go` / `encrypt_aes.go` / `decrypt_aes.go` / `encrypt_aes256.go` / `decrypt_aes256.go`**
 - `Encrypt(inputPath, outputPath, userPassword, ownerPassword)` — top-level helper writes RC4-128-protected PDF (PDF 1.4 Standard Security Handler V=2 R=3). For AES, use `(*Document).SetEncryption(EncryptionOptions{...})`
 - `ErrEncrypted` — sentinel error from `Open`/`OpenStream` on encrypted input
