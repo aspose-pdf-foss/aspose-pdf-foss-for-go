@@ -2,7 +2,10 @@
 
 package asposepdf
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 // widgetOnStateName returns the export name of a widget's "on" appearance
 // state — the first key under /AP/N that is not /Off, with the leading
@@ -341,8 +344,10 @@ func (f *ComboBoxField) SetValue(s string) error {
 		}
 	}
 	if f.node.ff&fieldFlagEdit != 0 {
-		// Edit mode: arbitrary text is allowed.
+		// Edit mode: arbitrary text is allowed. Clear any stale /I — the
+		// typed value doesn't correspond to an /Opt index.
 		f.node.dict["/V"] = encodeFormString(s)
+		delete(f.node.dict, "/I")
 		noteFormMutated(f.node)
 		return nil
 	}
@@ -376,6 +381,9 @@ func (f *ComboBoxField) SetSelected(index int) error {
 		value = opts[index].Export
 	}
 	f.node.dict["/V"] = encodeFormString(value)
+	// /I records the selected /Opt index so interactive viewers
+	// reconstruct selection state consistently with our pre-generated /AP.
+	f.node.dict["/I"] = pdfArray{index}
 	noteFormMutated(f.node)
 	return nil
 }
@@ -479,19 +487,24 @@ func (f *ListBoxField) SetSelected(indices ...int) error {
 	if len(indices) > 1 && !f.MultiSelect() {
 		return fmt.Errorf("ListBoxField.SetSelected: %d indices given but field is not MultiSelect", len(indices))
 	}
-	switch len(indices) {
+	// Work on a sorted ascending copy so both /V (array form) and /I are
+	// emitted in index order, as required for /I by ISO 32000-1 §12.7.4.4.
+	sorted := append([]int(nil), indices...)
+	sort.Ints(sorted)
+
+	switch len(sorted) {
 	case 0:
 		delete(f.node.dict, "/V")
 	case 1:
-		opt := opts[indices[0]]
+		opt := opts[sorted[0]]
 		value := opt.Value
 		if opt.Export != "" {
 			value = opt.Export
 		}
 		f.node.dict["/V"] = encodeFormString(value)
 	default:
-		arr := make(pdfArray, 0, len(indices))
-		for _, idx := range indices {
+		arr := make(pdfArray, 0, len(sorted))
+		for _, idx := range sorted {
 			opt := opts[idx]
 			v := opt.Value
 			if opt.Export != "" {
@@ -501,6 +514,23 @@ func (f *ListBoxField) SetSelected(indices ...int) error {
 		}
 		f.node.dict["/V"] = arr
 	}
+
+	// /I (selected indices) — required for multi-select list boxes and
+	// honoured by interactive viewers to reconstruct the exact selection
+	// and scroll state. Without it a viewer in edit mode regenerates its
+	// own list layout, which doesn't line up with our pre-generated /AP
+	// and ghosts the option text at a second set of Y positions. Sorted
+	// ascending per spec; cleared when there is no selection.
+	if len(sorted) == 0 {
+		delete(f.node.dict, "/I")
+	} else {
+		iArr := make(pdfArray, len(sorted))
+		for i, idx := range sorted {
+			iArr[i] = idx
+		}
+		f.node.dict["/I"] = iArr
+	}
+
 	noteFormMutated(f.node)
 	return nil
 }

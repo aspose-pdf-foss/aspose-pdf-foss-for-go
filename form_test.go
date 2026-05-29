@@ -308,6 +308,55 @@ func TestFormSetValueRegeneratesAP(t *testing.T) {
 	}
 }
 
+// TestChoiceFieldWritesSelectedIndices verifies that selecting options in
+// a list box / combo box writes the /I (selected-indices) array required
+// by ISO 32000-1 §12.7.4.4. Without /I, interactive viewers regenerate
+// their own list layout on focus, which ghosts the option text on top of
+// our pre-generated /AP at a second set of Y positions. /I must be sorted
+// ascending and cleared when the selection is emptied.
+func TestChoiceFieldWritesSelectedIndices(t *testing.T) {
+	doc := pdf.NewDocument(595, 842)
+	form := doc.Form()
+
+	lb, err := form.AddListBox(1, pdf.Rectangle{LLX: 50, LLY: 600, URX: 250, URY: 720}, "interests",
+		[]pdf.ChoiceOption{
+			{Value: "Alpha"}, {Value: "Beta"}, {Value: "Gamma"}, {Value: "Delta"},
+		})
+	if err != nil {
+		t.Fatalf("AddListBox: %v", err)
+	}
+	lb.SetMultiSelect(true)
+
+	// Select indices out of order — /I must come out sorted ascending.
+	if err := lb.SetSelected(2, 0); err != nil {
+		t.Fatalf("SetSelected: %v", err)
+	}
+	var buf bytes.Buffer
+	if _, err := doc.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("/I [0 2]")) {
+		t.Errorf("expected sorted /I [0 2] in output, not found")
+	}
+
+	// Reopen, clear the selection, and confirm /I is gone.
+	doc2, err := pdf.OpenStream(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("OpenStream: %v", err)
+	}
+	lb2 := doc2.Form().Field("interests").(*pdf.ListBoxField)
+	if err := lb2.SetSelected(); err != nil {
+		t.Fatalf("SetSelected(clear): %v", err)
+	}
+	var buf2 bytes.Buffer
+	if _, err := doc2.WriteTo(&buf2); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	if bytes.Contains(buf2.Bytes(), []byte("/I [")) {
+		t.Errorf("expected /I to be cleared after empty SetSelected, but it is still present")
+	}
+}
+
 func TestFormManualNeedAppearancesToggle(t *testing.T) {
 	src := testFile(t)
 	doc, _ := pdf.Open(src)
