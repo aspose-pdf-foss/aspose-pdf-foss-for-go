@@ -205,6 +205,25 @@ func main() {
 		},
 	})
 
+	// --- XMP metadata -----------------------------------------------
+	// Modern toolchains (and PDF/A) read XMP from /Catalog/Metadata.
+	// SyncInfoToXMP mirrors the /Info dictionary just set into an XMP
+	// packet so both metadata stores agree; then add an XMP-only custom
+	// property to show arbitrary namespaced fields round-trip.
+	if err := doc.SyncInfoToXMP(); err != nil {
+		log.Fatalf("sync XMP: %v", err)
+	}
+	xmp, _ := doc.XMP()
+	xmp.Custom = append(xmp.Custom, pdf.XMPProperty{
+		Namespace: "http://ns.aspose.com/pdf/foss/1.0/",
+		Prefix:    "aspose",
+		Name:      "Showcase",
+		Value:     "feature-showcase",
+	})
+	if err := doc.SetXMP(xmp); err != nil {
+		log.Fatalf("set XMP: %v", err)
+	}
+
 	// --- Font subsetting --------------------------------------------
 	// Shrink the embedded DejaVu Sans (~760 KB) to just the glyphs the
 	// document actually draws. Must run after all text is added and
