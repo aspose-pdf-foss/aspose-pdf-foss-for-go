@@ -205,6 +205,17 @@ func main() {
 		},
 	})
 
+	// --- Font subsetting --------------------------------------------
+	// Shrink the embedded DejaVu Sans (~760 KB) to just the glyphs the
+	// document actually draws. Must run after all text is added and
+	// before Save — adding text afterwards could reference dropped
+	// glyphs. Drops the embedded font from hundreds of KB to a few KB.
+	if n, err := doc.SubsetFonts(); err != nil {
+		log.Fatalf("subset fonts: %v", err)
+	} else if n > 0 {
+		log.Printf("subset %d embedded font(s)", n)
+	}
+
 	// --- Encryption — AES-256 (PDF 2.0) -----------------------------
 	// Empty user password lets any viewer open the file without a prompt,
 	// while the owner password still gates modify/extract operations under
