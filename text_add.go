@@ -393,6 +393,9 @@ func fontWidthAndAscent(font Font, size float64) (widthFn, float64, error) {
 		ascentVal := float64(f.ttf.ascent) / float64(f.ttf.unitsPerEm)
 		return width, ascentVal, nil
 
+	case *Type3Font:
+		return f.widthFn(size), 0.8, nil
+
 	default:
 		return nil, 0, fmt.Errorf("font: unsupported type %T", font)
 	}
@@ -497,6 +500,13 @@ func (p *Page) resolveFontForPage(font Font, size float64) (resName string, widt
 		}
 		ascentVal := float64(f.ttf.ascent) / float64(f.ttf.unitsPerEm)
 		return name, width, encode, ascentVal, 0, nil
+
+	case *Type3Font:
+		name, e := p.ensureType3FontResource(f)
+		if e != nil {
+			return "", nil, nil, 0, 0, e
+		}
+		return name, f.widthFn(size), f.encodeString, 0.8, 0, nil
 
 	default:
 		return "", nil, nil, 0, 0, fmt.Errorf("add text: unsupported font type %T", font)
@@ -1033,6 +1043,18 @@ func resolveFontForXObject(font Font, size float64, doc *Document, resources pdf
 		fontDict[name] = pdfRef{Num: f.fontObjectID}
 		ascentVal := float64(f.ttf.ascent) / float64(f.ttf.unitsPerEm)
 		return name, width, encode, ascentVal, 0, nil
+
+	case *Type3Font:
+		if f.doc != doc {
+			return "", nil, nil, 0, 0, fmt.Errorf("resolve font: type3 font belongs to a different document")
+		}
+		id, e := f.ensureBuilt()
+		if e != nil {
+			return "", nil, nil, 0, 0, e
+		}
+		name := fmt.Sprintf("/T3F%d", id)
+		fontDict[name] = pdfRef{Num: id}
+		return name, f.widthFn(size), f.encodeString, 0.8, 0, nil
 
 	default:
 		return "", nil, nil, 0, 0, fmt.Errorf("resolve font: unsupported font type %T", font)
