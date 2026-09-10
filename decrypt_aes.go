@@ -154,14 +154,15 @@ func decryptValueAES128(v pdfValue, decrypt func([]byte) ([]byte, error)) (pdfVa
 }
 
 func decryptStreamAES128(s *pdfStream, decrypt func([]byte) ([]byte, error)) error {
-	if s.Decoded {
+	src, ok := encryptedStreamBytes(s)
+	if !ok {
 		return nil
 	}
-	plain, err := decrypt(s.Data)
+	plain, err := decrypt(src)
 	if err != nil {
 		return err
 	}
-	s.Data = plain
+	s.Data, s.Decoded, s.raw = plain, false, nil
 	if decoded, derr := decodeStream(s.Dict, s.Data); derr == nil {
 		s.Data = decoded
 		s.Decoded = true

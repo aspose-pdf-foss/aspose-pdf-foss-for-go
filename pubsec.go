@@ -423,11 +423,12 @@ func buildDecryptStatePubSec(encDict pdfDict, cert *x509.Certificate, key crypto
 	}
 	perms := int32(binary.BigEndian.Uint32(payload[20:24])) //nolint:gosec // bitfield
 	return &encryptState{
-		algorithm:   alg,
-		key:         pubsecFileKey(payload[:20], blobs, keyLen, alg == EncryptionAlgAES256, encryptMetadata),
-		permissions: perms,
-		pubSec:      true,
-		recipients:  blobs,
+		algorithm:     alg,
+		key:           pubsecFileKey(payload[:20], blobs, keyLen, alg == EncryptionAlgAES256, encryptMetadata),
+		permissions:   perms,
+		pubSec:        true,
+		recipients:    blobs,
+		plainMetadata: !encryptMetadata,
 	}, nil
 }
 

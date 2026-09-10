@@ -23,6 +23,8 @@ The spreadsheets, colour and closed-workflows release. **PDF → XLSX** joins th
 
 ### Fixed
 
+- **Encrypted documents could silently lose a stream** — roughly one encrypted stream in 500 was destroyed while being read. The parser decodes a stream's declared filter as it parses, on the assumption that ciphertext never survives it; but a zlib header is only "CM == 8 and (CMF<<8|FLG) % 31 == 0", which random ciphertext satisfies about that often, and the decoder's tolerance of truncated data then returned a byte or two of garbage rather than failing. The stream was marked decoded, the decryption pass skipped it, and its content was gone — a font's `/ToUnicode` shrinking to one byte, say, which turned a space into U+FFFD in extracted text (the intermittent CI failure seen on both Linux and Windows). Streams are now always decrypted from the bytes as they appear in the file, with cross-reference streams and unencrypted metadata correctly exempt. Verified across the corpus: 1,009 documents encrypt, reopen and extract byte-identical text under RC4-128, AES-128 and AES-256.
+
 - **Converters no longer embed decompression-bomb images** — a degenerate PDF can declare a gigapixel image from a few KB of flate (a corpus file carries 35000×35000 — 1.2 Gpx — in an 11 KB document); the flow exporters and the DOCX Textbox mode embedded the decoded PNG verbatim, producing a DOCX/EPUB that crashed LibreOffice (stack overflow) and stalled Word. Rasters above 30 megapixels are now skipped at collection time (nothing legitimate in the 1,000+ document corpus comes near the cap). Found by the DOCX harness's new LibreOffice render rung, which now passes the full corpus.
 
 ## [0.7.0] — 2026-08-10

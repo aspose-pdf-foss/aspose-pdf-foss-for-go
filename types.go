@@ -49,6 +49,14 @@ type pdfStream struct {
 	Dict    pdfDict
 	Data    []byte // decompressed when Decoded==true; raw otherwise
 	Decoded bool   // true if Data has been successfully decompressed
+	// raw holds the bytes exactly as they appeared in the file when Data was
+	// decoded at parse time. It is a subslice of the source buffer (free), and
+	// it exists for one reason: in an encrypted document the parser cannot know
+	// a stream is ciphertext, and roughly one ciphertext in 500 happens to open
+	// with a valid zlib header — decoding it yields garbage. The decryption
+	// pass recovers by decrypting these bytes instead. Nil for streams built in
+	// memory and for streams left undecoded.
+	raw []byte
 }
 
 // pdfObject is an indirect object "n g obj ... endobj".

@@ -193,6 +193,10 @@ type encryptState struct {
 	ownerKeyEntry []byte              // AES-256 only: 32 bytes (/OE); zero for others
 	permsEntry    []byte              // AES-256 only: 16 bytes (/Perms); zero for others
 	permissions   int32               // /P value propagated to /Encrypt dict
+	// plainMetadata records a parsed /EncryptMetadata false: the document's
+	// /Metadata stream is then stored unencrypted and must not be decrypted.
+	// Zero value = metadata is encrypted, which is what this library writes.
+	plainMetadata bool
 	// pubSec marks the public-key handler; recipients then carries the CMS
 	// envelopes written to (or read from) /Recipients (pubsec.go).
 	pubSec     bool

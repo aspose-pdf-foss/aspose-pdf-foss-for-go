@@ -17,6 +17,20 @@ var ErrEncrypted = errors.New("PDF is encrypted; use OpenWithPassword")
 // encryption state for decryption. Dispatches by /V and /R: V=2 R=3 →
 // RC4-128 Standard Security Handler; V=4 R=4 → AES-128 via /CFM /AESV2.
 func buildDecryptState(encDict pdfDict, trailer pdfDict, cred *openCredentials) (*encryptState, error) {
+	state, err := buildDecryptStateFor(encDict, trailer, cred)
+	if err != nil {
+		return nil, err
+	}
+	// Whichever handler produced it, record whether the /Metadata stream is
+	// left in the clear so the decryption pass skips it.
+	if !state.plainMetadata {
+		state.plainMetadata = metadataLeftPlain(encDict)
+	}
+	return state, nil
+}
+
+// buildDecryptStateFor dispatches on the security handler and revision.
+func buildDecryptStateFor(encDict pdfDict, trailer pdfDict, cred *openCredentials) (*encryptState, error) {
 	filter := dictGetName(encDict, "/Filter")
 	switch filter {
 	case "/Standard":
@@ -194,6 +208,9 @@ func pdfStringBytes(v pdfValue) ([]byte, error) {
 // then decoded via the /Filter chain. The /Encrypt dict itself is
 // never decrypted by this function — callers must skip it.
 func decryptObject(obj *pdfObject, state *encryptState) error {
+	if st, ok := obj.Value.(*pdfStream); ok && streamExemptFromEncryption(st, state) {
+		return nil
+	}
 	switch state.algorithm {
 	case EncryptionAlgRC4_128:
 		key := state.objectKey(obj.Num)
@@ -260,19 +277,58 @@ func rc4Decrypted(in, key []byte) []byte {
 // decode chain. The parser tries to decode at parse time; on encrypted
 // data this almost always fails (RC4 output is not a valid zlib/ASCIIHex/
 // ASCII85 stream) and the parser preserves raw bytes with Decoded=false.
-// We rely on that path: decrypt the raw bytes, then decode.
-//
-// If a stream came back already Decoded=true, that means decode succeeded
-// on encrypted bytes — extraordinarily unlikely in practice. We treat
-// Data as already-clean and return it untouched, since we no longer have
-// the original encrypted bytes to recover from.
+// We rely on that path: decrypt the raw bytes, then decode. When the
+// ciphertext did decode at parse time (see pdfStream.raw), the file bytes
+// kept there are decrypted instead.
 func decryptStreamInPlace(s *pdfStream, key []byte) {
-	if s.Decoded {
+	src, ok := encryptedStreamBytes(s)
+	if !ok {
 		return
 	}
-	s.Data = rc4Decrypted(s.Data, key)
+	s.Data, s.Decoded, s.raw = rc4Decrypted(src, key), false, nil
 	if decoded, err := decodeStream(s.Dict, s.Data); err == nil {
 		s.Data = decoded
 		s.Decoded = true
 	}
+}
+
+// encryptedStreamBytes returns the bytes to decrypt for one stream, and
+// whether there is anything to do. Normally the parser leaves an encrypted
+// stream undecoded (its ciphertext does not survive the declared filter) and
+// Data is the ciphertext. When the ciphertext happened to look like a valid
+// zlib stream, Data holds the garbage that came out of it and pdfStream.raw
+// still holds the file bytes — those are the ones to decrypt. A stream that
+// was decoded with no raw bytes recorded was built in memory, so it is left
+// alone.
+func encryptedStreamBytes(s *pdfStream) ([]byte, bool) {
+	if !s.Decoded {
+		return s.Data, true
+	}
+	if s.raw != nil {
+		return s.raw, true
+	}
+	return nil, false
+}
+
+// metadataLeftPlain reports whether the /Encrypt dict declares
+// /EncryptMetadata false, meaning the /Metadata stream is not encrypted.
+func metadataLeftPlain(encDict pdfDict) bool {
+	if b, ok := encDict["/EncryptMetadata"].(bool); ok {
+		return !b
+	}
+	return false
+}
+
+// streamExemptFromEncryption reports whether a stream is stored in the clear
+// even inside an encrypted document: cross-reference streams are never
+// encrypted (ISO 32000-1 §7.5.8.2), and the document metadata stream is left
+// unencrypted when /EncryptMetadata is false (§7.6.3.1).
+func streamExemptFromEncryption(s *pdfStream, state *encryptState) bool {
+	switch dictGetName(s.Dict, "/Type") {
+	case "/XRef":
+		return true
+	case "/Metadata":
+		return state.plainMetadata
+	}
+	return false
 }

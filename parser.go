@@ -128,7 +128,10 @@ func parseDictOrStream(l *lexer) (pdfValue, error) {
 			// preserve the original /Filter so the writer copies it as-is.
 			return &pdfStream{Dict: d, Data: streamData, Decoded: false}, nil
 		}
-		return &pdfStream{Dict: d, Data: decoded, Decoded: true}, nil
+		// The file bytes are kept (as a subslice, so at no cost) because a
+		// successful decode does not prove the stream was not encrypted — see
+		// pdfStream.raw.
+		return &pdfStream{Dict: d, Data: decoded, Decoded: true, raw: streamData}, nil
 	}
 	return d, nil
 }
