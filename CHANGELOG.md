@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.0] — 2026-09-10
+
+The spreadsheets-and-colour release. **PDF → XLSX** joins the conversion family: detected tables become Excel worksheets where numbers are numbers — plain values under either separator convention, percentages and currency amounts land as numeric cells with matching formats, so `SUM()` over an exported column works the moment the workbook opens; tables continuing across pages are stitched back into one, merged cells, header shading and column widths carry over, and a full-page mode lays every page's text into cells with its images anchored alongside. **ICC colour management** replaces the old pass-through of ICCBased spaces: a pure-Go ICC v2 parser and transform engine drives image extraction and the renderer through the profile connection space, so wide-gamut sources stop rendering oversaturated — with an sRGB fast path that keeps the common case free. **Type3 font authoring** (beyond Aspose.PDF for .NET) turns the vector drawing API into a font factory: draw a glyph on a canvas in em space and use it as ordinary, still-searchable text. Everything remains pure Go with no dependencies.
 
 ### Added
 
