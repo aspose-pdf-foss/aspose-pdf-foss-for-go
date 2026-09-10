@@ -16,11 +16,19 @@ var ErrEncrypted = errors.New("PDF is encrypted; use OpenWithPassword")
 // buildDecryptState parses an /Encrypt dict and returns the per-document
 // encryption state for decryption. Dispatches by /V and /R: V=2 R=3 →
 // RC4-128 Standard Security Handler; V=4 R=4 → AES-128 via /CFM /AESV2.
-func buildDecryptState(encDict pdfDict, trailer pdfDict, password string) (*encryptState, error) {
+func buildDecryptState(encDict pdfDict, trailer pdfDict, cred *openCredentials) (*encryptState, error) {
 	filter := dictGetName(encDict, "/Filter")
-	if filter != "/Standard" {
-		return nil, fmt.Errorf("unsupported /Filter %q (only /Standard is implemented)", filter)
+	switch filter {
+	case "/Standard":
+		if cred.password == nil {
+			return nil, fmt.Errorf("PDF is password-protected; use OpenWithPassword")
+		}
+	case "/Adobe.PubSec":
+		return buildDecryptStatePubSec(encDict, cred.cert, cred.key)
+	default:
+		return nil, fmt.Errorf("unsupported /Filter %q (only /Standard and /Adobe.PubSec are implemented)", filter)
 	}
+	password := *cred.password
 	v := dictGetInt(encDict, "/V")
 	r := dictGetInt(encDict, "/R")
 	switch {

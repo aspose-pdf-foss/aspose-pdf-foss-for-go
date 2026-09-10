@@ -107,7 +107,11 @@ flowchart TD
   (SHA-256, RSA or ECDSA) that can be PAdES, a DocMDP certification, and/or carry an RFC 3161
   trusted timestamp, over plain or already-encrypted documents, with support for multiple
   incremental signatures and verification via `VerifySignatures`. Keys are passed as a standard
-  `crypto.Signer` plus `*x509.Certificate` — no `.p12` file required.
+  `crypto.Signer` plus `*x509.Certificate` — no `.p12` file required. Documents can also be
+  encrypted for **certificate recipients** instead of a password
+  (`EncryptionOptions.Recipients`, the `/Adobe.PubSec` handler): each recipient gets its own
+  permissions, and the file opens with `OpenWithCertificate(path, cert, key)` for any
+  `crypto.Decrypter`.
 - **Content authoring with the Flow layout engine** — `Document.NewFlow` lays out paragraphs,
   headings, images, tables, and lists top-to-bottom with automatic pagination; floating boxes
   (absolute, in-flow, or floated with text wrap-around) and multi-column layout are built on the
@@ -582,6 +586,7 @@ stays free of network code.
 | `RadioButtonField` | RadioButtonField is a group of mutually exclusive options. |
 | `RadioButtonOptionField` | RadioButtonOptionField is one of the option widgets inside a RadioButtonField. |
 | `RadioItem` | RadioItem describes one widget inside a radio group. |
+| `Recipient` | Recipient is one certificate that may open a public-key-encrypted document, optionally with its own permission set. |
 | `Rectangle` | Rectangle represents a PDF rectangle [llx, lly, urx, ury] in points (1/72 inch). |
 | `RedactAnnotation` | RedactAnnotation marks regions for redaction. |
 | `RenderOptions` | RenderOptions controls page rasterization. |
@@ -650,6 +655,12 @@ stays free of network code.
   with the Adobe convention (reserved bits set high). In `EncryptionOptions`, `Permissions` is a
   pointer so `nil` means "grant all", distinguishing that default from an explicit
   `&Permissions{}`, which denies everything.
+- `EncryptionOptions.Recipients` switches to the public-key security handler (ISO 32000-1
+  §7.6.4): the document is sealed for a list of X.509 certificates — each with optional
+  per-recipient `Permissions`, which a password cannot express — and opened with
+  `OpenWithCertificate`/`OpenStreamWithCertificate` by supplying the certificate and any
+  `crypto.Decrypter` private key. AES-128 and AES-256 are supported (AES-256 by default); RSA
+  recipients only, and the file re-saves for the same recipients after editing.
 - `Document.Sign` covers the whole file with one PKCS#7-detached signature, invisible by default
   or visible via `Visible`/`Rect`/`Page`/`SignatureAppearance`; `PAdES` switches the subfilter to
   `ETSI.CAdES.detached`, `Certify` adds a DocMDP certification, and `TimestampURL` embeds an RFC
@@ -893,6 +904,8 @@ stays free of network code.
   DRM mechanism.
 - Linearization (`SaveLinearized`/`WriteToLinearized`) cannot be combined with encryption or
   digital signing in the same document.
+- Certificate-based encryption accepts RSA recipients only (PKCS#1 v1.5 key transport); elliptic
+  curve recipients (key agreement) and the legacy RC4 sub-filters are not written.
 - `ConvertToPDFA` auto-embeds non-embedded Standard-14 fonts but does not auto-fix
   `Symbol`/`ZapfDingbats`, composite (Type0/CJK) fonts, or PDF/A-1 transparency; confirm full
   conformance with a dedicated validator such as veraPDF.

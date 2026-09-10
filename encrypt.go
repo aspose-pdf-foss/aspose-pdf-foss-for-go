@@ -153,6 +153,12 @@ type EncryptionOptions struct {
 	OwnerPassword string
 	Permissions   *Permissions
 	Algorithm     EncryptionAlgorithm
+	// Recipients switches to the public-key security handler
+	// (/Filter /Adobe.PubSec): the document is encrypted for these
+	// certificates and opens with OpenWithCertificate instead of a
+	// password. The password fields are ignored when it is non-empty, and
+	// a recipient's own Permissions override the document-wide ones.
+	Recipients []Recipient
 }
 
 // encryptConfig holds password and permission settings for encrypting a document.
@@ -162,6 +168,9 @@ type encryptConfig struct {
 	ownerPassword  string // if empty, treated the same as userPassword
 	permissions    int32  // /P value; used if hasPermissions is true
 	hasPermissions bool   // false → fall back to encryptPermissionsAllowAll
+	// recipients, when non-empty, selects the public-key security handler
+	// instead of the password-based Standard one (pubsec.go).
+	recipients []Recipient
 }
 
 // effectivePermissions returns the /P value to use, honoring an explicit
@@ -184,10 +193,17 @@ type encryptState struct {
 	ownerKeyEntry []byte              // AES-256 only: 32 bytes (/OE); zero for others
 	permsEntry    []byte              // AES-256 only: 16 bytes (/Perms); zero for others
 	permissions   int32               // /P value propagated to /Encrypt dict
+	// pubSec marks the public-key handler; recipients then carries the CMS
+	// envelopes written to (or read from) /Recipients (pubsec.go).
+	pubSec     bool
+	recipients [][]byte
 }
 
 // newEncryptState derives all encryption parameters from cfg.
 func newEncryptState(cfg *encryptConfig) (*encryptState, error) {
+	if len(cfg.recipients) > 0 {
+		return newEncryptStatePubSec(cfg)
+	}
 	if cfg.algorithm == EncryptionAlgAES256 {
 		return newEncryptStateV5R6(cfg)
 	}

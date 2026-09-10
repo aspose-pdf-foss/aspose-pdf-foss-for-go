@@ -329,6 +329,9 @@ func escapeLiteral(s string) string {
 // /O and /U are raw 32-byte binary values emitted as hex strings to
 // avoid literal-string parsing ambiguities (embedded NULs, etc.).
 func buildEncryptDict(s *encryptState) pdfDict {
+	if s.pubSec {
+		return buildPubSecEncryptDict(s)
+	}
 	dict := pdfDict{
 		"/Filter": pdfName("/Standard"),
 		"/Length": 128,

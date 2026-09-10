@@ -82,7 +82,8 @@ func TestBuildDecryptStateDispatcher(t *testing.T) {
 		"/R":      6,
 	}
 	trailer := pdfDict{}
-	_, err := buildDecryptState(encDict, trailer, "x")
+	pwd := "x"
+	_, err := buildDecryptState(encDict, trailer, &openCredentials{password: &pwd})
 	if err == nil {
 		t.Error("expected error for V=5 R=6 (not yet supported)")
 	}

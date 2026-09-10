@@ -36,6 +36,8 @@ package asposepdf
 
 import (
 	"bytes"
+	"crypto"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -138,12 +140,45 @@ func OpenWithPassword(path, password string) (*Document, error) {
 //
 // See OpenWithPassword for the edit-in-place preservation semantics.
 func OpenStreamWithPassword(r io.Reader, password string) (*Document, error) {
-	return openStreamCore(r, &password)
+	return openStreamCore(r, &openCredentials{password: &password})
 }
 
-// openStreamCore is the shared implementation. password == nil means "no
-// password supplied"; an encrypted file then returns ErrEncrypted.
-func openStreamCore(r io.Reader, password *string) (*Document, error) {
+// OpenWithCertificate opens a PDF encrypted for certificate recipients
+// (the public-key security handler, /Filter /Adobe.PubSec) using the
+// recipient's certificate and its private key. The key is any
+// crypto.Decrypter — an *rsa.PrivateKey satisfies it — so no .p12 file is
+// required. Plain and password-protected files are rejected with a message
+// pointing at the right entry point.
+//
+// Example:
+//
+//	doc, err := asposepdf.OpenWithCertificate("secret.pdf", cert, key)
+func OpenWithCertificate(path string, cert *x509.Certificate, key crypto.Decrypter) (*Document, error) {
+	data, err := readFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("open PDF: %w", err)
+	}
+	return OpenStreamWithCertificate(bytes.NewReader(data), cert, key)
+}
+
+// OpenStreamWithCertificate reads a certificate-encrypted PDF from r.
+// See OpenWithCertificate.
+func OpenStreamWithCertificate(r io.Reader, cert *x509.Certificate, key crypto.Decrypter) (*Document, error) {
+	return openStreamCore(r, &openCredentials{cert: cert, key: key})
+}
+
+// openCredentials carries whatever the caller supplied to unlock an
+// encrypted document: a password (standard handler) or a certificate plus
+// its private key (public-key handler).
+type openCredentials struct {
+	password *string
+	cert     *x509.Certificate
+	key      crypto.Decrypter
+}
+
+// openStreamCore is the shared implementation. cred == nil means "no
+// credentials supplied"; an encrypted file then returns ErrEncrypted.
+func openStreamCore(r io.Reader, cred *openCredentials) (*Document, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("read PDF: %w", err)
@@ -158,7 +193,7 @@ func openStreamCore(r io.Reader, password *string) (*Document, error) {
 	var firstErr error
 	if startOff, err := findStartXRef(data); err == nil {
 		if xref, trailer, perr := parseXRef(data, startOff); perr == nil {
-			doc, derr := buildFromXRef(data, xref, trailer, password)
+			doc, derr := buildFromXRef(data, xref, trailer, cred)
 			if derr == nil {
 				doc.source = data
 				return doc, nil
@@ -178,7 +213,7 @@ func openStreamCore(r io.Reader, password *string) (*Document, error) {
 	if rerr != nil {
 		return nil, fmt.Errorf("parse PDF: %w", coalesceErr(firstErr, rerr))
 	}
-	doc, derr := buildFromXRef(data, xref, trailer, password)
+	doc, derr := buildFromXRef(data, xref, trailer, cred)
 	if derr != nil {
 		if errors.Is(derr, ErrEncrypted) {
 			return nil, derr
@@ -200,7 +235,7 @@ func coalesceErr(first, second error) error {
 // buildFromXRef assembles a Document from a parsed (or reconstructed)
 // cross-reference table and trailer. Returns ErrEncrypted (unwrapped) when
 // the file is encrypted and no password was supplied.
-func buildFromXRef(data []byte, xref *xrefTable, trailer pdfDict, password *string) (*Document, error) {
+func buildFromXRef(data []byte, xref *xrefTable, trailer pdfDict, cred *openCredentials) (*Document, error) {
 	raw := newRawDocument(data, xref, trailer)
 
 	// pendingEncrypt is set when the file was opened with a password so
@@ -209,7 +244,7 @@ func buildFromXRef(data []byte, xref *xrefTable, trailer pdfDict, password *stri
 	var pendingPreserved *encryptState
 
 	if encVal, ok := trailer["/Encrypt"]; ok {
-		if password == nil {
+		if cred == nil {
 			return nil, ErrEncrypted
 		}
 		encRef, ok := encVal.(pdfRef)
@@ -226,7 +261,7 @@ func buildFromXRef(data []byte, xref *xrefTable, trailer pdfDict, password *stri
 		if !ok {
 			return nil, fmt.Errorf("/Encrypt is not a dict")
 		}
-		state, err := buildDecryptState(encDict, trailer, *password)
+		state, err := buildDecryptState(encDict, trailer, cred)
 		if err != nil {
 			return nil, err
 		}
@@ -243,10 +278,12 @@ func buildFromXRef(data []byte, xref *xrefTable, trailer pdfDict, password *stri
 		// it's only consulted if the user explicitly calls SetPassword et al.
 		// and thereby clears pendingPreserved.
 		pendingEncrypt = &encryptConfig{
-			userPassword:   *password,
-			ownerPassword:  *password,
 			permissions:    state.permissions,
 			hasPermissions: true,
+		}
+		if cred.password != nil {
+			pendingEncrypt.userPassword = *cred.password
+			pendingEncrypt.ownerPassword = *cred.password
 		}
 	}
 
@@ -541,6 +578,12 @@ func (d *Document) SetEncryption(opts EncryptionOptions) {
 	if opts.Permissions != nil {
 		cfg.permissions = opts.Permissions.toPDFBits()
 		cfg.hasPermissions = true
+	}
+	if len(opts.Recipients) > 0 {
+		cfg.recipients = append([]Recipient(nil), opts.Recipients...)
+		if cfg.algorithm == EncryptionAlgAES128 && opts.Algorithm != EncryptionAlgAES128 {
+			cfg.algorithm = EncryptionAlgAES256 // pubsec defaults to AES-256
+		}
 	}
 	d.encrypt = cfg
 }
