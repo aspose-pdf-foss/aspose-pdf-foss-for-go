@@ -53,7 +53,7 @@ flowchart TD
       c3["Content authoring via the Flow layout engine"]
       c4["Tables and vector graphics"]
       c5["AcroForm fields"]
-      c6["Annotations, bookmarks, and redaction"]
+      c6["Annotations, bookmarks, redaction, and portfolios"]
       c7["Stamps and watermarks"]
     end
     subgraph capr[" "]
@@ -134,6 +134,13 @@ flowchart TD
   irreversibly removes text, images, and paths from the marked regions. `Document.Flatten()`/
   `Form.Flatten()` bake interactive fields and annotations into static page content so the
   result renders identically but is no longer editable.
+- **Attachments and portfolios** — `Document.EmbeddedFiles()` attaches, reads back, and removes
+  document-level files through the `/Catalog/Names/EmbeddedFiles` name tree, while
+  `Document.Collection()` turns those attachments into a **PDF portfolio**: a schema of custom
+  columns (`Schema().Add("Amount", "Total", CollectionFieldNumber)`), per-file values via
+  `EmbeddedFile.CollectionItem()`, an initial file, a sort order, and a details/tiles/hidden
+  presentation mode — so viewers show a navigable table instead of a plain attachment list, and
+  the cover page still opens anywhere.
 - **Tagged PDF and PDF/UA accessibility** — `Document.TaggedContent()` builds a logical structure
   tree as content is drawn (`TagContent`, `AddTaggedTable`, `AddTaggedList`), and
   `Document.ValidatePDFUA()` reports the PDF/UA-1 prerequisites still missing.
@@ -444,6 +451,12 @@ stays free of network code.
 | `CheckboxField` | CheckboxField is a checkbox with on/off state. |
 | `ChoiceOption` | ChoiceOption is one option of a ComboBoxField or ListBoxField. |
 | `CircleAnnotation` | CircleAnnotation draws an elliptical annotation. |
+| `Collection` | Collection is the document's portfolio view over its embedded files. |
+| `CollectionField` | CollectionField is one portfolio column. |
+| `CollectionFieldType` | CollectionFieldType is a schema column's data type (the collection field's /Subtype). |
+| `CollectionItem` | CollectionItem holds one attachment's values for the portfolio's schema fields. |
+| `CollectionSchema` | CollectionSchema is the portfolio's set of columns. |
+| `CollectionView` | CollectionView selects how a viewer presents the portfolio's files. |
 | `Color` | Color represents an RGBA color with values in [0, 1]. |
 | `ComboBoxField` | ComboBoxField is a single-select dropdown choice field. |
 | `CompletionRequest` | CompletionRequest describes one chat-completion call. |
@@ -668,6 +681,25 @@ stays free of network code.
   rectangle, auto-paginating on overflow. `TOCOptions` controls the heading, per-level indent, and
   whether page numbers, dotted leaders, and links are drawn. A runnable example lives in
   [`_examples/toc`](_examples/toc).
+
+### Attachments and Portfolios
+
+- `Document.EmbeddedFiles()` manages document-level attachments through the
+  `/Catalog/Names/EmbeddedFiles` name tree (ISO 32000-1 §7.11.4): `Add(path)`/
+  `AddFromStream(name, r)` embed a file (MIME type detected from the extension), and each
+  `*EmbeddedFile` exposes `Name()`, `Description()`/`SetDescription()`, `MIMEType()`, `Size()`,
+  and `Data()`/`WriteTo(w)`/`Save(path)` to read it back. The page-pinned counterpart is
+  `FileAttachmentAnnotation`.
+- `Document.Collection()` presents those attachments as a **portfolio** (ISO 32000-1 §7.11.6 and
+  §12.3.5): `SetView(CollectionViewDetails|Tiles|Hidden)` chooses the presentation mode,
+  `Schema().Add(key, header, type)` declares the columns a viewer shows — text, number, and date
+  columns carry per-file values, while `CollectionFieldFilename`/`Description`/`ModDate`/
+  `CreationDate`/`Size` are derived from the attachment itself (`CollectionField.IsDerived()`) — and `SetInitialFile(name)` plus
+  `SetSort(field, ascending)` control what opens first and how the list is ordered. Values are
+  written per attachment with `EmbeddedFile.CollectionItem()`
+  (`SetText`/`SetNumber`/`SetDate`, read back with `Text`/`Number`/`Date`). `IsPortfolio()`
+  reports the state and `Remove()` reverts the document to a plain attachment list without
+  touching the files. Folder hierarchies (`/Folders`) are out of scope.
 
 ### Document JavaScript and Open Actions
 
