@@ -2540,7 +2540,7 @@ func mustAddOutline(err error) {
 // after the furniture pass so the thumbnail shows the complete page.
 func addConversionShowcase(doc *pdf.Document, page *pdf.Page, billPage *pdf.Page, billPageNum int) {
 	sectionHeader(page, "Document Conversion",
-		"SaveDocx · SaveEpub · SaveMarkdown · SaveHTML · SaveSVG · TableAbsorber")
+		"SaveDocx · SaveXlsx · SaveEpub · SaveMarkdown · SaveHTML · SaveSVG · TableAbsorber")
 
 	navy := pdf.Color{R: 0.15, G: 0.20, B: 0.55, A: 1}
 	grey := pdf.Color{R: 0.35, G: 0.35, B: 0.38, A: 1}
@@ -2667,7 +2667,7 @@ func addConversionShowcase(doc *pdf.Document, page *pdf.Page, billPage *pdf.Page
 	}
 
 	// --- Output format badges -----------------------------------------
-	badges := []string{"DOCX", "EPUB", "Markdown", "HTML", "SVG", "PNG · TIFF"}
+	badges := []string{"DOCX", "XLSX", "EPUB", "Markdown", "HTML", "SVG", "PNG·TIFF"}
 	bTop := chipTop - chipH - 26
 	bH := 20.0
 	bGap := 8.0
@@ -2681,7 +2681,7 @@ func addConversionShowcase(doc *pdf.Document, page *pdf.Page, billPage *pdf.Page
 		}, pdf.Rectangle{LLX: x, LLY: bTop - bH + 5, URX: x + bW, URY: bTop - 5}))
 	}
 	mustText(page.AddText(
-		"One source, every target: editable Word (three recognition modes), reflowable EPUB 3, GFM Markdown, self-contained or reflowable HTML, per-page SVG, and raster formats — all pure Go, all validated against a 1,000+ document corpus.",
+		"One source, every target: editable Word (three recognition modes), Excel workbooks with real numeric cells (SUM works), reflowable EPUB 3, GFM Markdown, self-contained or reflowable HTML, per-page SVG, and raster formats — all pure Go, all validated against a 1,000+ document corpus.",
 		pdf.TextStyle{Font: pdf.FontHelvetica, Size: 8.5, Color: &grey, HAlign: pdf.HAlignCenter, LineSpacing: 1.35},
 		pdf.Rectangle{LLX: 60, LLY: bTop - bH - 46, URX: 535, URY: bTop - bH - 8}))
 }
