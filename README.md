@@ -182,7 +182,11 @@ flowchart TD
   OpenType fonts (`.ttf`/`.otf`/`.ttc`) — `Document.LoadFont`/`Document.LoadFontByName("Calibri",
   bold, italic)` resolve faces by family name via a pluggable `FontRepository`, and
   `Document.SubsetFonts()` rebuilds each embedded font's own glyph tables (`glyf`/`loca`/`hmtx`/
-  `CIDToGIDMap`) down to only the glyphs actually used; `Document.RemoveUnusedObjects()` deletes
+  `CIDToGIDMap`) down to only the glyphs actually used; custom glyphs can also be authored
+  outright with `Document.CreateType3Font()` — `Type3Font.AddGlyph(rune, width)` hands back a
+  drawing canvas in glyph space, so a symbol drawn with the vector API becomes a real font
+  character whose text still extracts and searches (an embedded `ToUnicode` CMap carries the
+  mapping); `Document.RemoveUnusedObjects()` deletes
   every object unreachable from any page and returns the removed count on its own, or fold that
   same cleanup into a larger pass with the unified `Document.Optimize` pass
   (`DefaultOptimizationOptions()` is the safe, lossless preset — remove unused objects, subset
@@ -611,6 +615,7 @@ stays free of network code.
 | `TextStyle` | TextStyle defines reusable text formatting properties. |
 | `TiffDevice` | TiffDevice renders pages to TIFF. |
 | `TilingPattern` | TilingPattern is a repeating fill (PatternType 1, ISO 32000-1 §8.7.3.1): a small cell of content tiled across whatever shape it fills. |
+| `Type3Font` | Type3Font is a user-defined glyph-stream font. |
 | `UnderlineAnnotation` | UnderlineAnnotation draws a horizontal line under text. |
 | `Usage` | Usage reports token counts when the provider returns them. |
 | `VAlign` | VAlign specifies vertical text alignment within a rectangle. |
@@ -698,6 +703,12 @@ stays free of network code.
   right-align by default. Arabic contextual shaping (connected letterforms plus lam-alef
   ligatures via Presentation Forms-B) renders proper Arabic with any font that covers the block,
   including the bundled DejaVu Sans.
+- `Document.CreateType3Font()` authors a Type3 font (ISO 32000-1 §9.6.5), whose glyphs are
+  content streams rather than outlines: `AddGlyph(r, width)` returns a `*Page` canvas in glyph
+  space (1000 units per em, baseline at `y = 0`) that accepts the whole drawing API, and the
+  finished font drops into `TextStyle.Font` alongside Standard-14 and embedded faces. The font
+  freezes on first use, embedding each glyph as a `/CharProcs` stream plus a generated
+  `ToUnicode` CMap, so text drawn with custom symbols still extracts, searches, and renders.
 
 ### Vector Graphics and SVG Import
 
