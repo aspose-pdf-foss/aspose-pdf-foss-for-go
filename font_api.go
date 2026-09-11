@@ -79,10 +79,65 @@ type embeddedFont struct {
 	baseFont     string          // PostScript name cache
 	fontObjectID int             // ID of the Type0 font dict in doc.objects
 	usedGlyphs   map[uint16]bool // glyph IDs actually emitted to a content stream
+
+	// glyphText names the glyphs shaping substituted (ligatures, contextual
+	// forms), so /ToUnicode maps them back to the characters they stand for;
+	// nominal marks the glyphs the cmap assigns to an ordinary character,
+	// whose mapping must not be overridden; textDirty says /ToUnicode needs
+	// rebuilding.
+	glyphText map[uint16]string
+	nominal   map[uint16]bool
+	textDirty bool
 }
 
 func (e *embeddedFont) BaseFont() string { return e.baseFont }
 func (e *embeddedFont) IsEmbedded() bool { return true }
+
+// claimGlyphText decides whether /ToUnicode can carry the text a shaped
+// glyph stands for, recording the mapping when it can. The font's own glyph
+// for a character maps through the cmap already; a substituted glyph — a
+// ligature, a contextual form — gets its text recorded the first time it is
+// drawn, even over a presentation-form code point (DejaVu's "ffi" ligature
+// is also its glyph for U+FB03, but the text drawn was "ffi"). It returns
+// false when the glyph already stands for something else: Noto Naskh draws
+// zain as its reh glyph plus a dot, and relabelling that glyph would turn
+// every reh in the document into a zain. The caller then supplies the text
+// with /ActualText instead.
+func (e *embeddedFont) claimGlyphText(gid uint16, text string) bool {
+	if text == "" || gid == 0 {
+		return false
+	}
+	if prev, ok := e.glyphText[gid]; ok {
+		return prev == text
+	}
+	if r := []rune(text); len(r) == 1 && e.ttf.glyphID(r[0]) == gid {
+		return true
+	}
+	if e.nominal == nil {
+		e.nominal = make(map[uint16]bool, len(e.ttf.runeToGlyph))
+		for r, g := range e.ttf.runeToGlyph {
+			if !isPresentationForm(r) {
+				e.nominal[g] = true
+			}
+		}
+	}
+	if e.nominal[gid] {
+		return false
+	}
+	if e.glyphText == nil {
+		e.glyphText = map[uint16]string{}
+	}
+	e.glyphText[gid] = text
+	e.textDirty = true
+	return true
+}
+
+// isPresentationForm reports whether r is a compatibility presentation form
+// (ligatures such as U+FB03, Arabic contextual forms) — code points that name
+// a glyph shape rather than a character, so a shaped glyph may reclaim them.
+func isPresentationForm(r rune) bool {
+	return (r >= 0xFB00 && r <= 0xFDFF) || (r >= 0xFE70 && r <= 0xFEFF)
+}
 
 // useGlyph records that glyph gid was emitted to a content stream, so
 // (*Document).SubsetFonts knows to keep it. Called from the text encoders.

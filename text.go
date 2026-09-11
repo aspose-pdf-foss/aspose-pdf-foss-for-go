@@ -485,7 +485,7 @@ func (e *textExtractor) showStringSingleByte(s string) {
 		if r == 0 {
 			r = '\uFFFD'
 		}
-		e.emitRune(r)
+		e.emitMapped(uint16(code), r)
 		e.advanceGlyph(code)
 	}
 }
@@ -505,7 +505,7 @@ func (e *textExtractor) showStringMultiByte(s string) {
 		if r == 0 {
 			r = '\uFFFD'
 		}
-		e.emitRune(r)
+		e.emitMapped(code, r)
 		e.advanceGlyphCID(code, 2)
 	}
 }
@@ -531,7 +531,7 @@ func (e *textExtractor) showStringCMap(s string) {
 		if r == 0 {
 			r = '\uFFFD'
 		}
-		e.emitRune(r)
+		e.emitMapped(uint16(code), r)
 		e.advanceGlyphCID(cid, n)
 		b = b[n:]
 	}
@@ -573,6 +573,19 @@ func (e *textExtractor) showTJ(operand pdfValue) {
 			e.tm = matMul(translateMatrix(displacement, 0), e.tm)
 		}
 	}
+}
+
+// emitMapped emits the text of one glyph: every character of a multi-
+// character ToUnicode destination (a ligature such as "fi"), otherwise r.
+// The characters share the glyph's position; the caller advances once.
+func (e *textExtractor) emitMapped(code uint16, r rune) {
+	if seq := e.font.toUnicodeSeq[code]; len(seq) > 1 {
+		for _, sr := range seq {
+			e.emitRune(sr)
+		}
+		return
+	}
+	e.emitRune(r)
 }
 
 func (e *textExtractor) emitRune(r rune) {

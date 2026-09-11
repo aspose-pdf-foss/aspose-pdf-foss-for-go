@@ -11,12 +11,15 @@ type fontInfo struct {
 	widths    [256]float64       // character code → width in 1/1000 text space units
 	toUnicode map[uint16]rune    // ToUnicode CMap mapping (glyph ID -> Unicode)
 	cidWidths map[uint16]float64 // CID widths from /W array
-	defaultW  float64            // /DW default width for CIDFont (1000 if absent)
-	isType0   bool               // true = two-byte character codes (composite font)
-	cidCMap   *cidCMap           // Type0 /Encoding CMap (predefined or embedded); nil = Identity
-	cidToUni  map[uint16]rune    // CID → Unicode (Adobe ordering table); nil if unknown
-	ordering  string             // CIDSystemInfo /Ordering (e.g. "GB1"); "" = Identity/unknown
-	known     bool               // false if encoding could not be determined
+	// toUnicodeSeq holds the codes whose ToUnicode destination is several
+	// characters — a ligature glyph mapped to "fi" — with the full sequence.
+	toUnicodeSeq map[uint16][]rune
+	defaultW     float64         // /DW default width for CIDFont (1000 if absent)
+	isType0      bool            // true = two-byte character codes (composite font)
+	cidCMap      *cidCMap        // Type0 /Encoding CMap (predefined or embedded); nil = Identity
+	cidToUni     map[uint16]rune // CID → Unicode (Adobe ordering table); nil if unknown
+	ordering     string          // CIDSystemInfo /Ordering (e.g. "GB1"); "" = Identity/unknown
+	known        bool            // false if encoding could not be determined
 	// glyphNames maps codes remapped by /Encoding /Differences to their raw
 	// glyph names — needed when a name has no Unicode meaning (ZapfDingbats
 	// a1..a191) and the glyph must be reached by name through the font's
@@ -56,7 +59,7 @@ func resolveFont(objects map[int]*pdfObject, fontDict pdfDict) fontInfo {
 	if tuVal, ok := fontDict["/ToUnicode"]; ok {
 		resolved := resolveRef(objects, tuVal)
 		if stream, ok := resolved.(*pdfStream); ok {
-			fi.toUnicode = parseCMap(stream.Data)
+			fi.toUnicode, fi.toUnicodeSeq = parseCMapFull(stream.Data)
 			if len(fi.toUnicode) > 0 {
 				fi.known = true
 			}

@@ -96,7 +96,7 @@ func TestBuildToUnicodeCMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stream := buildToUnicodeCMap(f)
+	stream := buildToUnicodeCMap(f, nil)
 	content := string(stream.Data)
 	if !strings.Contains(content, "beginbfchar") {
 		t.Error("CMap missing beginbfchar block")

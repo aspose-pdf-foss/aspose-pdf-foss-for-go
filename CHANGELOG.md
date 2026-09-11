@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **OpenType shaping (GSUB/GPOS)** — text drawn with an embedded OpenType font is now shaped by the font's own layout tables. Arabic joins through the font's contextual forms, so faces without Presentation Forms-B — Amiri, Noto Naskh, most modern Arabic fonts — render connected script instead of isolated letters; Persian and Urdu letters join too; vowel marks (harakat, Hebrew points) sit on their base letters; ligatures form and letter pairs kern. A pure-Go engine reads GDEF, GSUB and GPOS — every lookup type, including contextual, chaining, cursive and mark-to-mark attachment — and applies them the way HarfBuzz does: output is **glyph-for-glyph identical to HarfBuzz** across a 54-string Arabic/Persian/Urdu/Hebrew/Latin differential suite on four fonts, and MuPDF renders the result exactly as our renderer does. Shaped text stays extractable and searchable: substituted glyphs map back to their characters through `/ToUnicode`, and clusters no single glyph can name carry `/ActualText`. No API change — `AddText` simply gets it right, and unkerned text still produces byte-identical content streams. (`pdf-go-26u4`)
+
+### Fixed
+
+- **Ligatures extract as all of their letters** — a `/ToUnicode` entry mapping one glyph to several characters (the "fi" ligature common in LaTeX and Word output) extracted as its first character only, and a supplementary-plane destination (a surrogate pair) extracted as nothing. Both now read back whole.
+- **Embedded fonts write a deterministic `/ToUnicode`** — a glyph shared by two characters (the space glyph usually serves U+00A0 too) was written with both mappings in random order, so a space could extract as a no-break space from one save to the next. Each glyph now maps to its lowest code point.
+
 ## [0.8.1] — 2026-09-10
 
 A single fix, but a load-bearing one: encrypted documents could silently lose a stream on read.

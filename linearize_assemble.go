@@ -39,6 +39,8 @@ func (a *assembled) remapFn() func(int) int {
 // d.objects (adding writer-built objects) exactly as the previous inline code
 // in buildDocumentPDF did.
 func (d *Document) assemble() (*assembled, error) {
+	d.refreshShapedText()
+
 	var encState *encryptState
 	if d.preserved != nil {
 		encState = d.preserved

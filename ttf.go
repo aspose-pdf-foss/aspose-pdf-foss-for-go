@@ -5,6 +5,7 @@ package asposepdf
 import (
 	"encoding/binary"
 	"fmt"
+	"sync"
 )
 
 // ttfFont holds the parsed fields required for PDF embedding and text measurement.
@@ -53,6 +54,19 @@ type ttfFont struct {
 	// Set for OpenType-CFF fonts (an sfnt with a 'CFF ' table instead of glyf):
 	// glyph outlines come from this CFF program. See glyphContours.
 	cff *cffFont
+
+	// OpenType Layout (GSUB/GPOS/GDEF), read on the first shaping request
+	// and cached — most fonts are drawn without ever needing it. See
+	// opentype.go for the reader and shape.go for the engine.
+	otOnce sync.Once
+	ot     *otLayout
+}
+
+// layout returns the font's parsed OpenType Layout tables, or nil when it
+// has none (an old TrueType face, or a subset embedded for rendering).
+func (f *ttfFont) layout() *otLayout {
+	f.otOnce.Do(func() { f.ot = parseOTLayout(f) })
+	return f.ot
 }
 
 // tableRecord is an entry in the TTF table directory.

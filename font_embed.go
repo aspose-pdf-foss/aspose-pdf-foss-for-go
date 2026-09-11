@@ -7,6 +7,7 @@ import (
 	"compress/zlib"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // buildFontFile2Stream creates a /FontFile2 stream with the raw TTF bytes,
@@ -176,18 +177,58 @@ func buildWArray(f *ttfFont) pdfArray {
 	return arr
 }
 
-// buildToUnicodeCMap generates the /ToUnicode CMap stream for the font.
-// Emits one bfchar entry per (glyphID, rune) pair from runeToGlyph.
-func buildToUnicodeCMap(f *ttfFont) *pdfStream {
-	type pair struct {
-		gid uint16
-		r   rune
-	}
-	pairs := make([]pair, 0, len(f.runeToGlyph))
+// toUnicodeEntry is one bfchar mapping: a glyph id and the UTF-16BE hex of
+// the characters it stands for.
+type toUnicodeEntry struct {
+	gid uint16
+	hex string
+}
+
+// buildToUnicodeCMap generates the /ToUnicode CMap stream for the font: one
+// bfchar entry per glyph the cmap names — its lowest character, so a glyph
+// shared by U+0020 and U+00A0 reads back as a plain space — with the glyphs
+// shaping substituted (extra — ligatures and contextual forms, possibly
+// several characters each) mapping to the text they were drawn for.
+func buildToUnicodeCMap(f *ttfFont, extra map[uint16]string) *pdfStream {
+	return writeToUnicodeCMap(toUnicodeEntries(f, nil, extra))
+}
+
+// toUnicodeEntries builds one entry per glyph (restricted to used when it
+// is non-nil): shaped text first, else the lowest character the cmap maps
+// to the glyph.
+func toUnicodeEntries(f *ttfFont, used map[uint16]bool, extra map[uint16]string) []toUnicodeEntry {
+	lowest := make(map[uint16]rune, len(f.runeToGlyph))
 	for r, gid := range f.runeToGlyph {
-		pairs = append(pairs, pair{gid: gid, r: r})
+		if used != nil && !used[gid] {
+			continue
+		}
+		if prev, seen := lowest[gid]; !seen || r < prev {
+			lowest[gid] = r
+		}
 	}
-	sort.Slice(pairs, func(i, j int) bool { return pairs[i].gid < pairs[j].gid })
+	entries := make([]toUnicodeEntry, 0, len(lowest)+len(extra))
+	for gid, text := range extra {
+		if used == nil || used[gid] {
+			entries = append(entries, toUnicodeEntry{gid, stringToUTF16BEHex(text)})
+		}
+	}
+	for gid, r := range lowest {
+		if _, shaped := extra[gid]; !shaped {
+			entries = append(entries, toUnicodeEntry{gid, runeToUTF16BEHex(r)})
+		}
+	}
+	return entries
+}
+
+// writeToUnicodeCMap serializes bfchar entries (sorted by glyph, then
+// text, so the stream is deterministic) into a /ToUnicode CMap stream.
+func writeToUnicodeCMap(entries []toUnicodeEntry) *pdfStream {
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].gid != entries[j].gid {
+			return entries[i].gid < entries[j].gid
+		}
+		return entries[i].hex < entries[j].hex
+	})
 
 	var buf bytes.Buffer
 	buf.WriteString("/CIDInit /ProcSet findresource begin\n")
@@ -198,14 +239,14 @@ func buildToUnicodeCMap(f *ttfFont) *pdfStream {
 	buf.WriteString("/CMapType 2 def\n")
 	buf.WriteString("1 begincodespacerange <0000> <FFFF> endcodespacerange\n")
 
-	for start := 0; start < len(pairs); start += 100 {
+	for start := 0; start < len(entries); start += 100 {
 		end := start + 100
-		if end > len(pairs) {
-			end = len(pairs)
+		if end > len(entries) {
+			end = len(entries)
 		}
 		fmt.Fprintf(&buf, "%d beginbfchar\n", end-start)
-		for _, p := range pairs[start:end] {
-			fmt.Fprintf(&buf, "<%04X> <%s>\n", p.gid, runeToUTF16BEHex(p.r))
+		for _, e := range entries[start:end] {
+			fmt.Fprintf(&buf, "<%04X> <%s>\n", e.gid, e.hex)
 		}
 		buf.WriteString("endbfchar\n")
 	}
@@ -217,6 +258,26 @@ func buildToUnicodeCMap(f *ttfFont) *pdfStream {
 		Dict:    pdfDict{},
 		Data:    buf.Bytes(),
 		Decoded: true,
+	}
+}
+
+// refreshShapedText folds the glyph names shaping recorded (see
+// embeddedFont.mapGlyphText) into each font's /ToUnicode before the document
+// is serialized, rebuilding the stream in place so the Type0 font's
+// reference stays valid.
+func (d *Document) refreshShapedText() {
+	for _, ef := range d.embeddedFonts {
+		if ef == nil || !ef.textDirty {
+			continue
+		}
+		if type0, ok := d.objects[ef.fontObjectID].Value.(pdfDict); ok {
+			if tuRef, ok := type0["/ToUnicode"].(pdfRef); ok {
+				if obj, ok := d.objects[tuRef.Num]; ok {
+					obj.Value = buildToUnicodeCMap(ef.ttf, ef.glyphText)
+				}
+			}
+		}
+		ef.textDirty = false
 	}
 }
 
@@ -243,7 +304,7 @@ func embedFont(d *Document, f *ttfFont) int {
 	}
 	cidID := d.addObject(cidDict)
 
-	tuID := d.addObject(buildToUnicodeCMap(f))
+	tuID := d.addObject(buildToUnicodeCMap(f, nil))
 
 	type0 := pdfDict{
 		"/Type":            pdfName("/Font"),
@@ -284,7 +345,7 @@ func embedCFFFont(d *Document, f *ttfFont) int {
 	}
 	cidID := d.addObject(cidDict)
 
-	tuID := d.addObject(buildToUnicodeCMap(f))
+	tuID := d.addObject(buildToUnicodeCMap(f, nil))
 
 	type0 := pdfDict{
 		"/Type":            pdfName("/Font"),
@@ -347,10 +408,11 @@ func (d *Document) SubsetFonts() (int, error) {
 		if type0, ok := d.objects[ef.fontObjectID].Value.(pdfDict); ok {
 			if tuRef, ok := type0["/ToUnicode"].(pdfRef); ok {
 				if obj, ok := d.objects[tuRef.Num]; ok {
-					obj.Value = buildSubsetToUnicode(ef.ttf, ef.usedGlyphs)
+					obj.Value = buildSubsetToUnicode(ef.ttf, ef.usedGlyphs, ef.glyphText)
 				}
 			}
 		}
+		ef.textDirty = false
 		count++
 	}
 	return count, nil
@@ -425,47 +487,22 @@ func buildSubsetWArray(f *ttfFont, used map[uint16]bool) pdfArray {
 }
 
 // buildSubsetToUnicode regenerates the /ToUnicode CMap for only the used
-// glyphs. CIDs (== original glyph IDs) map back to their Unicode runes.
-func buildSubsetToUnicode(f *ttfFont, used map[uint16]bool) *pdfStream {
-	// Invert runeToGlyph for the used glyphs (first rune wins on ties).
-	gidToRune := make(map[uint16]rune, len(used))
-	for r, gid := range f.runeToGlyph {
-		if used[gid] {
-			if _, seen := gidToRune[gid]; !seen {
-				gidToRune[gid] = r
-			}
-		}
+// glyphs. CIDs (== original glyph IDs) map back to their Unicode runes, and
+// the used glyphs shaping produced map to their recorded text (extra).
+func buildSubsetToUnicode(f *ttfFont, used map[uint16]bool, extra map[uint16]string) *pdfStream {
+	if used == nil {
+		used = map[uint16]bool{}
 	}
-	gids := make([]uint16, 0, len(gidToRune))
-	for gid := range gidToRune {
-		gids = append(gids, gid)
-	}
-	sort.Slice(gids, func(i, j int) bool { return gids[i] < gids[j] })
+	return writeToUnicodeCMap(toUnicodeEntries(f, used, extra))
+}
 
-	var buf bytes.Buffer
-	buf.WriteString("/CIDInit /ProcSet findresource begin\n")
-	buf.WriteString("12 dict begin\n")
-	buf.WriteString("begincmap\n")
-	buf.WriteString("/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n")
-	buf.WriteString("/CMapName /Adobe-Identity-UCS def\n")
-	buf.WriteString("/CMapType 2 def\n")
-	buf.WriteString("1 begincodespacerange <0000> <FFFF> endcodespacerange\n")
-	for start := 0; start < len(gids); start += 100 {
-		end := start + 100
-		if end > len(gids) {
-			end = len(gids)
-		}
-		fmt.Fprintf(&buf, "%d beginbfchar\n", end-start)
-		for _, gid := range gids[start:end] {
-			fmt.Fprintf(&buf, "<%04X> <%s>\n", gid, runeToUTF16BEHex(gidToRune[gid]))
-		}
-		buf.WriteString("endbfchar\n")
+// stringToUTF16BEHex renders s as big-endian UTF-16 in uppercase hex.
+func stringToUTF16BEHex(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		b.WriteString(runeToUTF16BEHex(r))
 	}
-	buf.WriteString("endcmap\n")
-	buf.WriteString("CMapName currentdict /CMap defineresource pop\n")
-	buf.WriteString("end\nend\n")
-
-	return &pdfStream{Dict: pdfDict{}, Data: buf.Bytes(), Decoded: true}
+	return b.String()
 }
 
 // runeToUTF16BEHex renders r as big-endian UTF-16 in uppercase hex, with

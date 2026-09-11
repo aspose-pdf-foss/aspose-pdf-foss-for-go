@@ -78,9 +78,19 @@ func renderTextInBuilder(
 		return err
 	}
 
+	// OpenType shaping (phase 3): an embedded font with GSUB/GPOS tables
+	// shapes each line itself — contextual forms, ligatures, kerning, mark
+	// positioning. Every other font keeps the rune-by-rune path.
+	var shaper *embeddedFont
+	if ef, ok := font.(*embeddedFont); ok && fontHasShaping(ef.ttf) {
+		shaper = ef
+	}
+
 	// Arabic contextual shaping (phase 2): map letters to their Presentation
-	// Forms-B glyphs in logical order, before wrapping and BiDi reordering.
-	if bidiHasArabic(text) {
+	// Forms-B glyphs in logical order, before wrapping and BiDi reordering —
+	// unless the font's own GSUB chooses the forms, which would otherwise be
+	// handed glyphs that are already shaped.
+	if bidiHasArabic(text) && (shaper == nil || !fontShapesArabic(shaper.ttf)) {
 		text = shapeArabic(text)
 	}
 
@@ -162,10 +172,17 @@ func renderTextInBuilder(
 		if line == "" {
 			continue
 		}
-		if needBidi {
-			line = bidiVisualString(line, baseLevel)
+		var shaped shapedLine
+		var lineWidth float64
+		if shaper != nil {
+			shaped = shapeLine(shaper.ttf, line, baseLevel, needBidi)
+			lineWidth = shaped.width(fontSize)
+		} else {
+			if needBidi {
+				line = bidiVisualString(line, baseLevel)
+			}
+			lineWidth = measureString(line, width)
 		}
-		lineWidth := measureString(line, width)
 
 		// Horizontal alignment.
 		var x float64
@@ -198,7 +215,11 @@ func renderTextInBuilder(
 			b.buf.WriteString(fmt.Sprintf("%s %s Td\n", formatFloat(x-prevX), formatFloat(y-prevY)))
 		}
 
-		b.buf.WriteString(fmt.Sprintf("%s Tj\n", encode(line)))
+		if shaper != nil {
+			b.buf.WriteString(shaped.showOps(shaper, fontSize))
+		} else {
+			b.buf.WriteString(fmt.Sprintf("%s Tj\n", encode(line)))
+		}
 		linePositions = append(linePositions, linePos{x: x, y: y, width: lineWidth})
 	}
 

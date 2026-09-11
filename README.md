@@ -746,6 +746,12 @@ stays free of network code.
   right-align by default. Arabic contextual shaping (connected letterforms plus lam-alef
   ligatures via Presentation Forms-B) renders proper Arabic with any font that covers the block,
   including the bundled DejaVu Sans.
+- Embedded OpenType fonts are shaped by their own GSUB/GPOS tables: a pure-Go shaping engine
+  applies contextual forms, ligatures, kerning, and cursive and mark attachment the way HarfBuzz
+  does, glyph for glyph, so Arabic, Persian, and Urdu join in fonts without Presentation Forms-B
+  (Amiri, Noto Naskh Arabic), vowel marks sit on their base letters, and Latin text kerns. It
+  needs no API change — `AddText` shapes automatically — and shaped text stays extractable and
+  searchable through `ToUnicode` mappings and `ActualText` spans.
 - `Document.CreateType3Font()` authors a Type3 font (ISO 32000-1 §9.6.5), whose glyphs are
   content streams rather than outlines: `AddGlyph(r, width)` returns a `*Page` canvas in glyph
   space (1000 units per em, baseline at `y = 0`) that accepts the whole drawing API, and the
@@ -906,6 +912,9 @@ stays free of network code.
   digital signing in the same document.
 - Certificate-based encryption accepts RSA recipients only (PKCS#1 v1.5 key transport); elliptic
   curve recipients (key agreement) and the legacy RC4 sub-filters are not written.
+- OpenType shaping covers Arabic-family, Hebrew, and simple (Latin, Cyrillic, Greek) scripts; the
+  Indic, Khmer, Myanmar, and Hangul reordering shapers and vertical text are not implemented, and
+  text extraction returns right-to-left lines in visual order.
 - `ConvertToPDFA` auto-embeds non-embedded Standard-14 fonts but does not auto-fix
   `Symbol`/`ZapfDingbats`, composite (Type0/CJK) fonts, or PDF/A-1 transparency; confirm full
   conformance with a dedicated validator such as veraPDF.
